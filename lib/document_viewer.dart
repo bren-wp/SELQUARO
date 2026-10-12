@@ -65,7 +65,7 @@ class _SecureDocumentViewerState extends State<SecureDocumentViewer> {
             }
             final bytes = snapshot.data!;
             if (isPdf) {
-              return PdfViewer.data(bytes);
+              return PdfViewer.data(bytes, sourceName: widget.document.name);
             }
             return Center(child: InteractiveViewer(
               minScale: 0.8,
