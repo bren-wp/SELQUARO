@@ -235,7 +235,7 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
   Widget _navIcon(int index, IconData icon, String label) => InkWell(
     onTap: () => setState(() => currentTab = index),
     borderRadius: BorderRadius.circular(12),
-    child: SizedBox(width: 67, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+    child: SizedBox(width: 56, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Icon(icon, color: currentTab == index ? Sq.cyan : Sq.muted, size: 25),
       const SizedBox(height: 4),
       Text(label, style: TextStyle(fontSize: 11, color: currentTab == index ? Sq.cyan : Sq.muted)),

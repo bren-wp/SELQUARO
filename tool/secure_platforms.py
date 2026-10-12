@@ -57,11 +57,9 @@ end
 """)
 if podfile.exists():
     source = podfile.read_text()
-    if "# platform :ios" in source:
-        source = source.replace("# platform :ios, '13.0'", "platform :ios, '15.5'")
-        source = source.replace("# platform :ios, '12.0'", "platform :ios, '15.5'")
-    if "platform :ios" not in source:
-        source = "platform :ios, '15.5'\n" + source
+    source = "platform :ios, '15.5'\n" + "\n".join(
+        line for line in source.splitlines() if not line.lstrip().startswith("platform :ios,")
+    ) + "\n"
     podfile.write_text(source)
 
 plist = Path('ios/Runner/Info.plist')
@@ -113,3 +111,22 @@ if app_delegate.exists():
     app_delegate.write_text(swift)
 
 # Never generate signing identities or credentials in version control.
+
+# R8 sees the OCR plugin's optional script implementations. SELQUARO only uses
+# bundled Latin OCR. Suppress only absent optional language classes.
+rules = Path('android/app/proguard-rules.pro')
+rules.write_text("""-dontwarn com.google.mlkit.vision.text.chinese.**
+-dontwarn com.google.mlkit.vision.text.devanagari.**
+-dontwarn com.google.mlkit.vision.text.japanese.**
+-dontwarn com.google.mlkit.vision.text.korean.**
+""")
+gradle = Path('android/app/build.gradle.kts')
+if gradle.exists():
+    source = gradle.read_text()
+    needle = 'signingConfig = signingConfigs.getByName("debug")'
+    if needle in source and 'proguard-rules.pro' not in source:
+        source = source.replace(
+            needle,
+            needle + '\n            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")'
+        )
+    gradle.write_text(source)

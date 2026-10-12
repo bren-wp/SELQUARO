@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -57,19 +58,25 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
     }
     if (widget.initialFile != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _addSource(widget.initialFile!, widget.initialFile!.split('/').last);
+        if (mounted) _addSource(widget.initialFile!, widget.initialFile!.split('/').last, temporary: true);
       });
     }
   }
 
   @override
   void dispose() {
+    for (final file in _files) { _cleanTemporary(file); }
     _name.dispose(); _merchant.dispose(); _amount.dispose();
     _serial.dispose(); _notes.dispose();
     super.dispose();
   }
 
-  Future<void> _addSource(String path, String fileName) async {
+  void _cleanTemporary(_PendingFile file) {
+    if (!file.temporary) return;
+    unawaited(File(file.path).delete().then<void>((_) {}).catchError((Object _) {}));
+  }
+
+  Future<void> _addSource(String path, String fileName, {bool temporary = false}) async {
     final extension = fileName.split('.').last.toLowerCase();
     if (!['jpg', 'jpeg', 'png', 'webp', 'pdf'].contains(extension)) {
       _message('Only images and PDF files are supported');
@@ -80,14 +87,14 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
       _message('File is missing or larger than 20 MB');
       return;
     }
-    setState(() => _files.add(_PendingFile(path, fileName)));
+    setState(() => _files.add(_PendingFile(path, fileName, temporary: temporary)));
     if (['jpg', 'jpeg', 'png'].contains(extension)) await _extract(path);
   }
 
   Future<void> _camera() async {
     try {
       final image = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 88, maxWidth: 2400);
-      if (image != null) await _addSource(image.path, image.name);
+      if (image != null) await _addSource(image.path, image.name, temporary: true);
     } catch (_) { _message('Camera unavailable. Check camera permissions.'); }
   }
 
@@ -248,7 +255,7 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
         ..._files.map((file) => ListTile(
           leading: const Icon(Icons.insert_drive_file_outlined, color: Sq.cyan),
           title: Text(file.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: IconButton(onPressed: () => setState(() => _files.remove(file)), icon: const Icon(Icons.close)),
+          trailing: IconButton(onPressed: () { _cleanTemporary(file); setState(() => _files.remove(file)); }, icon: const Icon(Icons.close)),
         )),
         const SizedBox(height: 24),
         SqButton(text: _saving ? 'Saving securely...' : 'Save purchase', icon: Icons.lock_outline, onPressed: _saving ? null : _save),
@@ -259,7 +266,8 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
 }
 
 class _PendingFile {
-  const _PendingFile(this.path, this.name);
+  const _PendingFile(this.path, this.name, {required this.temporary});
   final String path;
   final String name;
+  final bool temporary;
 }

@@ -24,10 +24,17 @@ class VaultController extends ChangeNotifier {
 
   Future<void> upsert(Purchase item) async {
     if (error != null) throw StateError('Vault is locked');
+    final previousDocuments = purchases.where((entry) => entry.id == item.id).expand((entry) => entry.documents).toList();
     final updated = [...purchases.where((entry) => entry.id != item.id), item];
     await store.save(updated);
     purchases = updated;
     notifyListeners();
+    final remainingIds = item.documents.map((d) => d.id).toSet();
+    for (final old in previousDocuments) {
+      if (!remainingIds.contains(old.id)) {
+        await store.deleteDocument(old);
+      }
+    }
   }
 
   Future<void> remove(Purchase item) async {
