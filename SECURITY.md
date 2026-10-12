@@ -1,21 +1,31 @@
-# Security and privacy
+# SELQUARO security and privacy (0.2.0)
 
-SELQUARO is designed for offline use. It does not implement accounts, API endpoints, telemetry, advertising SDKs, or cloud synchronization.
+## Data flow and trust boundaries
+- SELQUARO has no account system, backend, ads, analytics, telemetry, remote synchronization or purchase/demo dataset.
+- Locally imported documents are encrypted into app-private storage. The original selected files are not modified.
+- On-device Google ML Kit OCR operates on receipt images; extracted text must be manually reviewed.
+- Android app backups are disabled. iOS private vault directory is marked as excluded from device backup.
 
-## Encryption
-- A fresh random 256-bit key is generated on first vault access and stored using flutter_secure_storage (Android Keystore / iOS Keychain backing).
-- Each vault write and imported file is encrypted independently using AES-256-GCM and a fresh random 96-bit nonce.
-- Authenticated decryption rejects modified content rather than silently repairing or resetting it.
-- Raw contents are transiently in application memory during import/preview. OS-level snapshots, malware, rooted/jailbroken devices and compromised system processes are outside the app threat model.
+## At-rest encryption
+- A random 256-bit vault key is stored in the system's protected key store (Android Keystore / iOS Keychain, via flutter_secure_storage).
+- Each metadata update and imported file is sealed with AES-256-GCM, a fresh 96-bit nonce and an authentication tag.
+- Authentication failure must never silently erase or regenerate existing vault records.
+- Document preview decrypts into app memory; user-requested sharing writes a temporary plaintext copy for the OS share sheet and deletes it upon return. Recipient apps may retain shared files.
+- The operating system, keyboards, screenshots, malware, rooted devices and access to unlocked runtime memory remain outside a mobile application's full control.
 
-## Data handling
-- Document selection permits only PDF/JPEG/PNG/WebP; file size is capped at 20 MB.
-- Imported documents use random filenames inside app-private storage. The app never uploads them.
-- OCR, where enabled, runs on-device. OCR results are suggestions requiring review.
-- No unsupported claim of '100% protected' or guaranteed legal warranty duration.
-- No remote backup and no recoverable account. Reinstallation or loss of device key can irreversibly lose the vault.
-- Biometric gating provides convenience but is not a substitute for OS device lock or storage encryption.
-- Android OS cloud backup should be disabled in the generated AndroidManifest. iOS backups require review of platform-specific backup exclusion policies before production.
+## Backups
+- Portable SQBK2 archives contain encrypted records and attachments with AES-256-GCM.
+- The backup key is derived from a user-provided 12+ character passphrase using PBKDF2-HMAC-SHA256 (210,000 iterations, random 128-bit salt), fresh random nonce and authentication.
+- Backup export intentionally invokes the OS share sheet with ciphertext only. Restore validates file limits, document references, IDs and authentication and will not overwrite an existing non-empty vault.
+- A forgotten passphrase cannot be recovered. Protect exported backups and test restore safely.
 
-## Release checks
-`flutter analyze`, `flutter test`, Android release build and iOS no-codesign build must complete before automated tagging/release. Production App Store signing is not bundled or fabricated.
+## Notifications and permissions
+- Reminders are off by default and require permission.
+- Notifications contain generic text, not product names, to reduce lock-screen data exposure.
+- Schedules are inexact and are subject to the device's battery/notification policies; delivery is not guaranteed.
+- No exact alarm permission and no online push notification provider are requested.
+
+## Supply chain / distribution
+- Android APK/AAB in GitHub prereleases use a testing configuration, not a permanent Play Store upload signature.
+- No signing keys, Apple credentials, passphrases or production passwords belong in GitHub history.
+- Device QA, penetration review and production signing remain required prior to publishing to stores.

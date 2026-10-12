@@ -10,6 +10,22 @@ if manifest.exists():
         xml = xml.replace('<application', '<application android:allowBackup="false" android:fullBackupContent="false"', 1)
     if 'android.permission.CAMERA' not in xml:
         xml = xml.replace('<application', '<uses-permission android:name="android.permission.CAMERA" />\n    <application', 1)
+    if 'android.permission.RECEIVE_BOOT_COMPLETED' not in xml:
+        xml = xml.replace('<application', '<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <application', 1)
+    if 'ScheduledNotificationReceiver' not in xml:
+        notification_receivers = """
+        <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+        <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+        """
+        xml = xml.replace('</application>', notification_receivers + '\n    </application>', 1)
     xml = xml.replace('android:label="selquaro"', 'android:label="SELQUARO"')
     manifest.write_text(xml)
 
@@ -123,6 +139,19 @@ rules.write_text("""-dontwarn com.google.mlkit.vision.text.chinese.**
 gradle = Path('android/app/build.gradle.kts')
 if gradle.exists():
     source = gradle.read_text()
+    if 'isCoreLibraryDesugaringEnabled = true' not in source:
+        source = source.replace(
+            'compileOptions {',
+            'compileOptions {\n        isCoreLibraryDesugaringEnabled = true',
+            1,
+        )
+    if 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' not in source:
+        source += """
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}
+"""
+    source = source.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 36')
     needle = 'signingConfig = signingConfigs.getByName("debug")'
     if needle in source and 'proguard-rules.pro' not in source:
         source = source.replace(

@@ -110,6 +110,34 @@ class VaultStore {
     return _unseal(await File('${directory.path}/${document.id}.bin').readAsBytes());
   }
 
+  /// Store verified backup attachments with original IDs in encrypted form.
+  /// Restore is only supported into an empty vault and never overwrites files.
+  Future<void> restoreDocumentBytes(VaultDocument document, Uint8List contents) async {
+    if (!RegExp(r'^[a-fA-F0-9-]{36}
+    final directory = await _directory;
+    final file = File('${directory.path}/${document.id}.bin');
+    if (await file.exists()) await file.delete();
+  }
+
+  Future<void> deleteAll() async {
+    final directory = await _directory;
+    if (await directory.exists()) await directory.delete(recursive: true);
+    await _keys.delete(key: _keyName);
+    _vaultKey = null;
+  }
+}
+).hasMatch(document.id)) {
+      throw const FormatException('Invalid restored document ID');
+    }
+    if (contents.isEmpty || contents.length > _maxFileBytes) {
+      throw const FormatException('Invalid restored document size');
+    }
+    final directory = await _directory;
+    final target = File('${directory.path}/${document.id}.bin');
+    if (await target.exists()) throw StateError('Document already exists');
+    await target.writeAsBytes(await _seal(contents), flush: true);
+  }
+
   Future<void> deleteDocument(VaultDocument document) async {
     final directory = await _directory;
     final file = File('${directory.path}/${document.id}.bin');

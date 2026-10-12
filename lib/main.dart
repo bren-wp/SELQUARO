@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,7 +9,10 @@ import 'package:local_auth/local_auth.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'backup_screen.dart';
 import 'controller.dart';
+import 'document_viewer.dart';
+import 'reminders.dart';
 import 'editor.dart';
 import 'models.dart';
 import 'theme.dart';
@@ -26,6 +30,8 @@ class Selquaro extends StatefulWidget {
 
 class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
   late final VaultController vault;
+  late final WarrantyReminders reminders;
+  bool _remindersReady = false;
   final _securePrefs = const FlutterSecureStorage();
   final _auth = LocalAuthentication();
   int currentTab = 0;
@@ -38,6 +44,7 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     vault = VaultController(VaultStore())..addListener(_rebuild);
+    reminders = WarrantyReminders();
     _boot();
   }
 
@@ -49,10 +56,44 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
       await _unlock();
     }
     await vault.initialize();
+    try {
+      await reminders.initialize();
+      _remindersReady = true;
+      await reminders.sync(vault.purchases);
+    } catch (_) {
+      _remindersReady = false;
+    }
     if (mounted) setState(() {});
   }
 
-  void _rebuild() { if (mounted) setState(() {}); }
+  void _rebuild() {
+    if (_remindersReady && !locked) unawaited(_syncReminders());
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _syncReminders() async {
+    try {
+      await reminders.sync(vault.purchases);
+    } catch (_) {
+      // Keep saved purchases intact even if the OS blocks reminders.
+    }
+  }
+
+  Future<void> _toggleReminders(bool desired) async {
+    try {
+      final ok = await reminders.setEnabled(desired, vault.purchases);
+      if (!ok) _notice('Enable notifications in your device settings to receive reminders.');
+      if (mounted) setState(() {});
+    } catch (_) {
+      _notice('Could not update reminders.');
+    }
+  }
+
+  Future<void> _openBackup() async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => VaultBackupPage(vault: vault),
+    ));
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -137,8 +178,17 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
       item: item, controller: vault, onEdit: () async {
         Navigator.pop(context);
         await _edit(item);
-      }, onShare: _shareDocument,
+      }, onShare: _shareDocument, onView: _viewDocument,
     )));
+  }
+
+  Future<void> _viewDocument(VaultDocument item) async {
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => SecureDocumentViewer(
+        document: item, store: vault.store, onShare: () => _shareDocument(item),
+      ),
+    ));
   }
 
   Future<void> _shareDocument(VaultDocument item) async {
@@ -172,6 +222,7 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
     if (confirmed != true) return;
     try {
       await vault.clear();
+      await reminders.clear();
       if (mounted) setState(() => currentTab = 0);
     } catch (_) { _notice('Could not erase the vault'); }
   }
@@ -202,9 +253,13 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
               : IndexedStack(index: currentTab, children: [
                   HomePage(controller: vault, onNew: () => _create(), onOpen: _details),
                   VaultPage(controller: vault, onNew: () => _create(), onOpen: _details),
-                  AlertsPage(controller: vault, onOpen: _details),
+                  AlertsPage(controller: vault, onOpen: _details,
+                    remindersEnabled: reminders.enabled),
                   SettingsPage(controller: vault, biometricEnabled: biometric,
-                    onBiometricChange: _setBiometric, onClear: _deleteAll),
+                    onBiometricChange: _setBiometric, onClear: _deleteAll,
+                    remindersEnabled: reminders.enabled,
+                    remindersAvailable: reminders.available,
+                    onRemindersChange: _toggleReminders, onBackup: _openBackup),
                 ])),
           bottomNavigationBar: vault.loaded && vault.error == null ? SafeArea(top: false,
             child: Container(
@@ -388,9 +443,11 @@ class _VaultPageState extends State<VaultPage> {
 }
 
 class AlertsPage extends StatelessWidget {
-  const AlertsPage({super.key, required this.controller, required this.onOpen});
+  const AlertsPage({super.key, required this.controller, required this.onOpen,
+    required this.remindersEnabled});
   final VaultController controller;
   final ValueChanged<Purchase> onOpen;
+  final bool remindersEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -415,8 +472,10 @@ class AlertsPage extends StatelessWidget {
         ...dated.map((p) => Padding(padding: const EdgeInsets.only(bottom: 10),
           child: PurchaseTile(item: p, onTap: () => onOpen(p)))),
       const SizedBox(height: 15),
-      const Text('Dates are stored on your device. Automatic system notifications will be added in a future release.',
-        style: TextStyle(color: Sq.muted, fontSize: 12)),
+      Text(remindersEnabled
+        ? 'Private device reminders are scheduled 30, 7 and 1 days before expiry (when permitted by the OS).'
+        : 'Enable optional device reminders in Settings. All warranty dates remain on this device.',
+        style: const TextStyle(color: Sq.muted, fontSize: 12)),
     ]);
   }
 
@@ -429,11 +488,17 @@ class AlertsPage extends StatelessWidget {
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key, required this.controller, required this.biometricEnabled,
-    required this.onBiometricChange, required this.onClear});
+    required this.onBiometricChange, required this.onClear,
+    required this.remindersEnabled, required this.remindersAvailable,
+    required this.onRemindersChange, required this.onBackup});
   final VaultController controller;
   final bool biometricEnabled;
   final ValueChanged<bool> onBiometricChange;
   final VoidCallback onClear;
+  final bool remindersEnabled;
+  final bool remindersAvailable;
+  final ValueChanged<bool> onRemindersChange;
+  final VoidCallback onBackup;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -461,6 +526,26 @@ class SettingsPage extends StatelessWidget {
         value: biometricEnabled, onChanged: onBiometricChange,
       )),
       const SizedBox(height: 12),
+      SqCard(child: SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        secondary: const Icon(Icons.notifications_active_outlined, color: Sq.gold),
+        title: const Text('Warranty reminders'),
+        subtitle: const Text('Optional private local notifications 30, 7 and 1 days before expiry.',
+          style: TextStyle(fontSize: 12, color: Sq.muted)),
+        value: remindersEnabled,
+        onChanged: remindersAvailable ? onRemindersChange : null,
+      )),
+      const SizedBox(height: 12),
+      SqCard(child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.backup_outlined, color: Sq.cyan),
+        title: const Text('Encrypted backup & restore'),
+        subtitle: const Text('Export or restore with your own passphrase.',
+          style: TextStyle(fontSize: 12, color: Sq.muted)),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onBackup,
+      )),
+      const SizedBox(height: 12),
       SqCard(child: const ListTile(
         contentPadding: EdgeInsets.zero, leading: Icon(Icons.cloud_off_outlined, color: Sq.green),
         title: Text('Offline by design'),
@@ -477,7 +562,7 @@ class SettingsPage extends StatelessWidget {
       const Text('ABOUT', style: TextStyle(color: Sq.cyan, letterSpacing: 2, fontWeight: FontWeight.w700)),
       const SizedBox(height: 12),
       const SqCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('SELQUARO 0.1.0', style: TextStyle(fontWeight: FontWeight.bold)),
+        Text('SELQUARO 0.2.0', style: TextStyle(fontWeight: FontWeight.bold)),
         SizedBox(height: 8),
         Text('Your purchases. Safely kept.', style: TextStyle(color: Sq.muted)),
         SizedBox(height: 8),
@@ -491,11 +576,12 @@ class SettingsPage extends StatelessWidget {
 
 class ProductDetails extends StatelessWidget {
   const ProductDetails({super.key, required this.item, required this.controller,
-    required this.onEdit, required this.onShare});
+    required this.onEdit, required this.onShare, required this.onView});
   final Purchase item;
   final VaultController controller;
   final VoidCallback onEdit;
   final ValueChanged<VaultDocument> onShare;
+  final ValueChanged<VaultDocument> onView;
 
   Future<void> _remove(BuildContext context) async {
     final approved = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
@@ -564,10 +650,14 @@ class ProductDetails extends StatelessWidget {
             message: 'Edit the purchase to attach receipts or warranty PDFs.')
         else
           ...item.documents.map((d) => Padding(padding: const EdgeInsets.only(bottom: 10),
-            child: SqCard(onTap: () => onShare(d), child: Row(children: [
+            child: SqCard(onTap: () => onView(d), child: Row(children: [
               const Icon(Icons.description_outlined, color: Sq.cyan), const SizedBox(width: 12),
               Expanded(child: Text(d.name, overflow: TextOverflow.ellipsis)),
-              const Icon(Icons.share_outlined, color: Sq.muted),
+              IconButton(
+                onPressed: () => onShare(d),
+                tooltip: 'Share copy',
+                icon: const Icon(Icons.ios_share_outlined, color: Sq.muted),
+              ),
             ])))),
         const SizedBox(height: 24),
         SqButton(text: 'Edit purchase', icon: Icons.edit_outlined, onPressed: onEdit),
