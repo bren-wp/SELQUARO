@@ -1,0 +1,90 @@
+name: Mobile QA and release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android analysis, tests and APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate platform hosts
+        run: bash tool/bootstrap_platforms.sh
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Static analysis
+        run: flutter analyze --no-fatal-infos
+      - name: Unit tests
+        run: flutter test
+      - name: Build Android installable alpha
+        run: flutter build apk --release
+      - name: Name Android test package
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/SELQUARO-v0.1.0-android-test.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: selquaro-android-alpha
+          path: dist/SELQUARO-v0.1.0-android-test.apk
+          if-no-files-found: error
+
+  ios:
+    name: iOS compilation
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate platform hosts
+        run: bash tool/bootstrap_platforms.sh
+      - run: flutter pub get
+      - name: Build iOS (unsigned)
+        run: flutter build ios --release --no-codesign
+      - name: Verify compiled app exists
+        run: test -d build/ios/iphoneos/Runner.app
+
+  release:
+    name: Publish v0.1.0 after both platforms pass
+    needs: [android, ios]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: selquaro-android-alpha
+          path: dist
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v0.1.0 >/dev/null 2>&1; then
+            echo 'v0.1.0 already exists; no duplicate release.'
+            exit 0
+          fi
+          gh release create v0.1.0 dist/SELQUARO-v0.1.0-android-test.apk \
+            --target "$GITHUB_SHA" \
+            --title "SELQUARO 0.1.0" \
+            --prerelease \
+            --notes-file RELEASE_NOTES.md
