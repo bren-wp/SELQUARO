@@ -4,3 +4,4 @@ set -euo pipefail
 flutter create --platforms=android,ios --org com.selquaro --project-name selquaro .
 rm -f test/widget_test.dart
 python3 tool/secure_platforms.py
+python3 tool/generate_icon.py

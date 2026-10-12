@@ -10,6 +10,7 @@ if manifest.exists():
         xml = xml.replace('<application', '<application android:allowBackup="false" android:fullBackupContent="false"', 1)
     if 'android.permission.CAMERA' not in xml:
         xml = xml.replace('<application', '<uses-permission android:name="android.permission.CAMERA" />\n    <application', 1)
+    xml = xml.replace('android:label="selquaro"', 'android:label="SELQUARO"')
     manifest.write_text(xml)
 
 activity = Path('android/app/src/main/kotlin/com/selquaro/selquaro/MainActivity.kt')
@@ -67,6 +68,7 @@ plist = Path('ios/Runner/Info.plist')
 if plist.exists():
     with plist.open('rb') as f:
         info = plistlib.load(f)
+    info['CFBundleDisplayName'] = 'SELQUARO'
     info['NSCameraUsageDescription'] = 'Photograph receipts and warranty documents on your device.'
     info['NSPhotoLibraryUsageDescription'] = 'Choose receipts to import into your encrypted local vault.'
     info['NSFaceIDUsageDescription'] = 'Unlock your encrypted receipts and warranties using Face ID.'
