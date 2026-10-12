@@ -74,10 +74,14 @@ class _VaultBackupPageState extends State<VaultBackupPage> {
     setState(() => _busy = true);
     try {
       final selected = await FilePicker.platform.pickFiles(
-        type: FileType.custom, allowedExtensions: ['sqvault'],
+        type: FileType.any,
       );
       if (selected == null || selected.files.single.path == null) return;
-      final file = File(selected.files.single.path!);
+      final selectedPath = selected.files.single.path!;
+      if (!selected.files.single.name.toLowerCase().endsWith('.sqvault')) {
+        throw const FormatException('Choose a SELQUARO .sqvault file');
+      }
+      final file = File(selectedPath);
       if (await file.length() > 140 * 1024 * 1024) {
         throw const FormatException('Backup too large');
       }

@@ -32,6 +32,27 @@ jobs:
         run: flutter analyze --no-fatal-infos
       - name: Unit tests
         run: flutter test
+      - name: Prepare Android NDK with download verification and retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK_DIR="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
+          if [ -f "$NDK_DIR/source.properties" ]; then
+            echo "NDK already installed"
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            echo "Installing Android NDK: attempt $attempt"
+            rm -rf "$NDK_DIR"
+            if printf 'y\n' | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.2.13676358" &&
+                [ -f "$NDK_DIR/source.properties" ]; then
+              echo "Android NDK verified"
+              exit 0
+            fi
+            sleep $((attempt * 8))
+          done
+          echo "NDK download failed after three retries" >&2
+          exit 1
       - name: Build Android installable alpha
         run: flutter build apk --release
       - name: Build Android application bundle
