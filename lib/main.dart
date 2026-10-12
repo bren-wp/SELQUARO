@@ -13,6 +13,7 @@ import 'backup_screen.dart';
 import 'controller.dart';
 import 'document_viewer.dart';
 import 'reminders.dart';
+import 'product_photo.dart';
 import 'editor.dart';
 import 'models.dart';
 import 'theme.dart';
@@ -326,7 +327,7 @@ class HomePage extends StatelessWidget {
           message: 'Add your first purchase or scan a receipt. No account is required.')
       else
         ...controller.ordered.take(5).map((p) => Padding(padding: const EdgeInsets.only(bottom: 10),
-          child: PurchaseTile(item: p, onTap: () => onOpen(p)))),
+          child: PurchaseTile(item: p, store: controller.store, onTap: () => onOpen(p)))),
       const SizedBox(height: 26),
       _section('Upcoming Warranty Expirations'),
       const SizedBox(height: 12),
@@ -335,7 +336,7 @@ class HomePage extends StatelessWidget {
           message: 'Warranty expiry reminders appear here when you add dates.')
       else
         ...controller.upcoming.take(4).map((p) => Padding(padding: const EdgeInsets.only(bottom: 10),
-          child: PurchaseTile(item: p, onTap: () => onOpen(p)))),
+          child: PurchaseTile(item: p, store: controller.store, onTap: () => onOpen(p)))),
       const SizedBox(height: 20),
     ]);
   }
@@ -351,8 +352,9 @@ class HomePage extends StatelessWidget {
 }
 
 class PurchaseTile extends StatelessWidget {
-  const PurchaseTile({super.key, required this.item, required this.onTap});
+  const PurchaseTile({super.key, required this.item, required this.store, required this.onTap});
   final Purchase item;
+  final VaultStore store;
   final VoidCallback onTap;
 
   @override
@@ -361,9 +363,7 @@ class PurchaseTile extends StatelessWidget {
     final color = days == null ? Sq.muted : days < 0 ? Sq.red : days <= 90 ? Sq.gold : Sq.green;
     final status = days == null ? 'No expiry date' : days < 0 ? 'Expired' : days == 0 ? 'Expires today' : '$days days left';
     return SqCard(onTap: onTap, padding: const EdgeInsets.all(12), child: Row(children: [
-      Container(width: 56, height: 56, decoration: BoxDecoration(
-        color: Sq.elevated, borderRadius: BorderRadius.circular(12)),
-        child: Icon(categoryIcon(item.category), color: Sq.cyan, size: 28)),
+      ProductPhoto(item: item, store: store, fallbackIcon: categoryIcon(item.category)),
       const SizedBox(width: 13),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -437,8 +437,67 @@ class _VaultPageState extends State<VaultPage> {
           title: widget.controller.purchases.isEmpty ? 'No purchases yet' : 'No matching purchases',
           message: widget.controller.purchases.isEmpty ? 'Tap + to add your first receipt or product.' : 'Try a different filter or search term.')
       else
-        ...matched.map((p) => Padding(padding: const EdgeInsets.only(bottom: 10), child: PurchaseTile(item: p, onTap: () => widget.onOpen(p)))),
+        LayoutBuilder(builder: (context, constraints) {
+          final columns = constraints.maxWidth >= 340 ? 2 : 1;
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: matched.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: columns == 2 ? .72 : 1.2,
+            ),
+            itemBuilder: (context, index) {
+              final purchase = matched[index];
+              return PurchaseGridCard(
+                item: purchase,
+                store: widget.controller.store,
+                onTap: () => widget.onOpen(purchase),
+              );
+            },
+          );
+        }),
     ]);
+  }
+}
+
+class PurchaseGridCard extends StatelessWidget {
+  const PurchaseGridCard({
+    super.key, required this.item, required this.store, required this.onTap,
+  });
+  final Purchase item;
+  final VaultStore store;
+  final VoidCallback onTap;
+
+  @override Widget build(BuildContext context) {
+    final days = item.daysRemaining(DateTime.now());
+    final label = days == null ? 'No expiry set' :
+        days < 0 ? 'Warranty expired' : days == 0 ? 'Expires today' : '$days days left';
+    final statusColor = days == null ? Sq.muted : days < 0 ? Sq.red :
+        days < 91 ? Sq.gold : Sq.green;
+    return SqCard(
+      onTap: onTap, padding: const EdgeInsets.all(10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ProductPhoto(item: item, store: store, fallbackIcon: categoryIcon(item.category),
+          width: double.infinity, height: 96),
+        const SizedBox(height: 11),
+        Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 5),
+        Text(item.merchant.isEmpty ? item.category : item.merchant,
+          maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: Sq.muted, fontSize: 11)),
+        const Spacer(),
+        Row(children: [
+          Icon(Icons.shield_outlined, color: statusColor, size: 15),
+          const SizedBox(width: 5),
+          Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: statusColor, fontWeight: FontWeight.w700))),
+        ]),
+      ]),
+    );
   }
 }
 
@@ -470,7 +529,7 @@ class AlertsPage extends StatelessWidget {
           message: 'Add actual warranty expiry dates to see your timeline here.')
       else
         ...dated.map((p) => Padding(padding: const EdgeInsets.only(bottom: 10),
-          child: PurchaseTile(item: p, onTap: () => onOpen(p)))),
+          child: PurchaseTile(item: p, store: controller.store, onTap: () => onOpen(p)))),
       const SizedBox(height: 15),
       Text(remindersEnabled
         ? 'Private device reminders are scheduled 30, 7 and 1 days before expiry (when permitted by the OS).'
@@ -614,12 +673,8 @@ class ProductDetails extends StatelessWidget {
           icon: const Icon(Icons.delete_outline, color: Sq.red)),
       ]),
       body: ListView(padding: const EdgeInsets.all(20), children: [
-        Center(child: Container(
-          width: 115, height: 115,
-          decoration: BoxDecoration(color: Sq.surface, borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Sq.outline)),
-          child: Icon(categoryIcon(item.category), color: Sq.cyan, size: 64),
-        )),
+        Center(child: ProductPhoto(item: item, store: controller.store,
+          fallbackIcon: categoryIcon(item.category), width: 132, height: 132)),
         const SizedBox(height: 18),
         Center(child: Text(item.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 27, fontWeight: FontWeight.bold))),
         const SizedBox(height: 6),

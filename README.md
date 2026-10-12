@@ -6,8 +6,8 @@ SELQUARO starts with **zero accounts, zero pre-populated products and zero exter
 
 ## SELQUARO 0.2.0
 
-- Premium dark-navy/cyan dashboard, searchable vault, product details, expiry timeline and security settings
-- Save and edit real purchase dates, prices, categories, serial numbers, receipts and warranty documents
+- Premium dark-navy/cyan dashboard, two-column product-photo vault, product details, expiry timeline and security settings
+- Save and edit real purchase dates, prices, categories, product photographs, serial numbers, receipts and warranty documents
 - Photograph receipts, import PDFs and images, extract Latin OCR on-device and verify values manually
 - **View PDFs and photos inside the app** without unencrypted export; intentionally share a copy when needed
 - AES-256-GCM encrypted storage with device Keystore/Keychain-protected random key

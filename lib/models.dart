@@ -41,6 +41,7 @@ class Purchase {
     required this.serialNumber,
     required this.notes,
     required this.documents,
+    this.coverDocumentId,
   });
 
   final String id;
@@ -54,6 +55,7 @@ class Purchase {
   final String serialNumber;
   final String notes;
   final List<VaultDocument> documents;
+  final String? coverDocumentId;
 
   int? daysRemaining(DateTime now) =>
       warrantyEndsAt == null ? null : DateTime(warrantyEndsAt!.year, warrantyEndsAt!.month, warrantyEndsAt!.day).difference(DateTime(now.year, now.month, now.day)).inDays;
@@ -70,6 +72,7 @@ class Purchase {
         'serialNumber': serialNumber,
         'notes': notes,
         'documents': documents.map((e) => e.toJson()).toList(),
+        'coverDocumentId': coverDocumentId,
       };
 
   factory Purchase.fromJson(Map<String, dynamic> json) => Purchase(
@@ -84,6 +87,7 @@ class Purchase {
         serialNumber: json['serialNumber'] as String? ?? '',
         notes: json['notes'] as String? ?? '',
         documents: (json['documents'] as List<dynamic>? ?? []).map((e) => VaultDocument.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
+        coverDocumentId: json['coverDocumentId'] as String?,
       );
 }
 

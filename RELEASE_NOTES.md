@@ -4,7 +4,7 @@
 - Privacy-first Android/iOS shared codebase and refined dark SELQUARO interface
 - On-device encrypted receipt and warranty storage without accounts or cloud synchronization
 - Camera capture, local text recognition, image/PDF imports and searchable purchase records
-- In-app document viewer with pinch zoom for images and native PDF rendering from decrypted memory
+- Two-column product library with user-selected encrypted product photographs (icon fallback)\n- In-app document viewer with pinch zoom for images and native PDF rendering from decrypted memory
 - Opt-in device-local warranty reminders 30, 7 and 1 days ahead of user-entered expiry dates
 - Portable passphrase-encrypted .sqvault backup and restore (AES-256-GCM, PBKDF2-HMAC-SHA256, 210k iterations)
 - Protected restore into an empty vault only, to prevent accidental overwrites
