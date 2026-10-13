@@ -1,4 +1,4 @@
-# SELQUARO privacy and security (0.4.0)
+# SELQUARO privacy and security (0.5.0)
 
 SELQUARO does not require user accounts or a cloud server. No advertising, telemetry, or analytics integrations are built in.
 
@@ -7,7 +7,7 @@ SELQUARO does not require user accounts or a cloud server. No advertising, telem
 - Random 256-bit vault key backed by device Keystore/Keychain secure storage.
 - A missing OS key **never causes silent generation of another key** over existing ciphertext. If the first metadata commit was interrupted, a complete authenticated pending write can be recovered without treating the vault as empty. When encrypted files are present, vault access fails closed to protect recovery options.
 - Imported PDF, JPEG, PNG and WebP files are checked against their binary signatures as well as their declared name/type; this is not antivirus scanning or full format sanitization.\n- Imported files are stored in an app-private encrypted directory. Partial encrypted attachment writes are cleaned up after failure. Original external documents are not modified.
-- Backup of app-private vault storage by Android is disabled; iOS excludes the vault directory from OS backup.
+- Backup of app-private vault storage by Android is disabled; iOS excludes the vault directory from OS backup.\n- Backup export acquires the same exclusive vault-operation lock as edits, deletes and restore. Documents and metadata cannot race into an inconsistent export.
 
 ## Screens and user interaction
 - On Android, FLAG_SECURE is enabled to block system screenshots and recent-task captures of sensitive contents.
@@ -23,7 +23,7 @@ SELQUARO does not require user accounts or a cloud server. No advertising, telem
 
 ## Reminders
 - Warranty reminders are off by default, use opt-in device notification permissions, and contain generic lock-screen-safe text.
-- Inexact scheduling may be deferred by system energy policy; delivery is not guaranteed.
+- Civil-day countdown and reminder scheduling avoid daylight-saving time shifts; inexact notification delivery may still be deferred by system energy policy and is not guaranteed.
 
 ## Distribution and review
 - Android GitHub prerelease binaries are **test-signed**, not production-signed.

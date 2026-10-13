@@ -14,6 +14,7 @@ import 'controller.dart';
 import 'document_viewer.dart';
 import 'reminders.dart';
 import 'product_photo.dart';
+import 'purchase_query.dart';
 import 'editor.dart';
 import 'models.dart';
 import 'theme.dart';
@@ -450,69 +451,200 @@ IconData categoryIcon(String category) {
 }
 
 class VaultPage extends StatefulWidget {
-  const VaultPage({super.key, required this.controller, required this.onNew, required this.onOpen});
+  const VaultPage({
+    super.key, required this.controller,
+    required this.onNew, required this.onOpen,
+  });
   final VaultController controller;
   final VoidCallback onNew;
   final ValueChanged<Purchase> onOpen;
+
   @override State<VaultPage> createState() => _VaultPageState();
 }
 
 class _VaultPageState extends State<VaultPage> {
-  String query = '';
+  final _search = TextEditingController();
   String category = 'All';
+  PurchaseSort sort = PurchaseSort.newest;
+  WarrantyFilter warranty = WarrantyFilter.all;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _resetFilters() {
+    _search.clear();
+    setState(() {
+      category = 'All';
+      sort = PurchaseSort.newest;
+      warranty = WarrantyFilter.all;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final matched = widget.controller.ordered.where((p) =>
-      (category == 'All' || p.category == category) &&
-      ('${p.name} ${p.merchant} ${p.serialNumber} ${p.notes}').toLowerCase().contains(query.toLowerCase()),
-    ).toList();
-    return ListView(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15), children: [
-      const BrandHeader(title: 'Always at hand.', subtitle: 'Your private, searchable purchase vault.'),
-      TextField(onChanged: (value) => setState(() => query = value),
-        decoration: const InputDecoration(hintText: 'Search your vault...', prefixIcon: Icon(Icons.search))),
-      const SizedBox(height: 13),
-      SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-        for (final label in const ['All', 'Electronics', 'Computers', 'Phones', 'Audio', 'Appliances', 'Home', 'Tools', 'Vehicles', 'Other'])
-          Padding(padding: const EdgeInsets.only(right: 7), child: ChoiceChip(
-            label: Text(label), selected: category == label,
-            onSelected: (_) => setState(() => category = label),
+    final matched = PurchaseQuery.apply(
+      widget.controller.purchases,
+      search: _search.text,
+      category: category,
+      sort: sort,
+      warranty: warranty,
+    );
+    final compact = MediaQuery.sizeOf(context).width < 360;
+    final scale = MediaQuery.textScalerOf(context).scale(1.0);
+    return CustomScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 15, 20, 0),
+          sliver: SliverToBoxAdapter(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const BrandHeader(
+                title: 'Always at hand.',
+                subtitle: 'Your private, searchable purchase vault.',
+              ),
+              TextField(
+                controller: _search,
+                onChanged: (_) => setState(() {}),
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: 'Search purchases...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _search.text.isEmpty ? null : IconButton(
+                    tooltip: 'Clear search',
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      _search.clear();
+                      setState(() {});
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  for (final label in const [
+                    'All', 'Electronics', 'Computers', 'Phones', 'Audio',
+                    'Appliances', 'Home', 'Tools', 'Vehicles', 'Other',
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 7),
+                      child: ChoiceChip(
+                        label: Text(label),
+                        selected: category == label,
+                        onSelected: (_) => setState(() => category = label),
+                      ),
+                    ),
+                ]),
+              ),
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  for (final option in WarrantyFilter.values)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 7),
+                      child: ChoiceChip(
+                        label: Text(switch (option) {
+                          WarrantyFilter.all => 'All warranties',
+                          WarrantyFilter.active => 'Active',
+                          WarrantyFilter.expiring => 'Expiring soon',
+                          WarrantyFilter.expired => 'Expired',
+                          WarrantyFilter.unspecified => 'No date',
+                        }),
+                        selected: warranty == option,
+                        onSelected: (_) => setState(() => warranty = option),
+                      ),
+                    ),
+                ]),
+              ),
+              const SizedBox(height: 15),
+              Row(children: [
+                Expanded(child: Text(
+                  matched.length == 1 ? '1 item' : matched.length.toString() + ' items',
+                  style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                )),
+                PopupMenuButton<PurchaseSort>(
+                  tooltip: 'Sort purchases',
+                  initialValue: sort,
+                  onSelected: (choice) => setState(() => sort = choice),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: PurchaseSort.newest, child: Text('Newest first')),
+                    PopupMenuItem(value: PurchaseSort.oldest, child: Text('Oldest first')),
+                    PopupMenuItem(value: PurchaseSort.name, child: Text('Name A–Z')),
+                    PopupMenuItem(value: PurchaseSort.warranty, child: Text('Warranty expiry')),
+                  ],
+                  icon: const Icon(Icons.sort, color: Sq.cyan),
+                ),
+                IconButton(
+                  onPressed: widget.onNew,
+                  tooltip: 'Add purchase',
+                  icon: const Icon(Icons.add_circle, color: Sq.cyan, size: 29),
+                ),
+              ]),
+              const SizedBox(height: 12),
+            ],
           )),
-      ])),
-      const SizedBox(height: 19),
-      Row(children: [
-        Expanded(child: Text('${matched.length} Items', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold))),
-        IconButton(onPressed: widget.onNew, tooltip: 'Add purchase', icon: const Icon(Icons.add_circle, color: Sq.cyan, size: 29)),
-      ]),
-      const SizedBox(height: 8),
-      if (matched.isEmpty)
-        EmptyView(icon: Icons.folder_open_outlined,
-          title: widget.controller.purchases.isEmpty ? 'No purchases yet' : 'No matching purchases',
-          message: widget.controller.purchases.isEmpty ? 'Tap + to add your first receipt or product.' : 'Try a different filter or search term.')
-      else
-        LayoutBuilder(builder: (context, constraints) {
-          final columns = constraints.maxWidth >= 340 ? 2 : 1;
-          return GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: matched.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: columns == 2 ? .72 : 1.2,
+        ),
+        if (matched.isEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 25),
+            sliver: SliverToBoxAdapter(child: Column(children: [
+              EmptyView(
+                icon: Icons.folder_open_outlined,
+                title: widget.controller.purchases.isEmpty
+                  ? 'No purchases yet' : 'No matching purchases',
+                message: widget.controller.purchases.isEmpty
+                  ? 'Add your first receipt or product using the plus icon.'
+                  : 'Try a different category, warranty filter or search.',
+              ),
+              if (widget.controller.purchases.isNotEmpty)
+                TextButton.icon(
+                  onPressed: _resetFilters,
+                  icon: const Icon(Icons.filter_alt_off_outlined),
+                  label: const Text('Clear filters'),
+                ),
+            ])),
+          )
+        else if (compact)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 25),
+            sliver: SliverList.builder(
+              itemCount: matched.length,
+              itemBuilder: (context, index) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: PurchaseTile(
+                  item: matched[index],
+                  store: widget.controller.store,
+                  onTap: () => widget.onOpen(matched[index]),
+                ),
+              ),
             ),
-            itemBuilder: (context, index) {
-              final purchase = matched[index];
-              return PurchaseGridCard(
-                item: purchase,
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 25),
+            sliver: SliverGrid.builder(
+              itemCount: matched.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: MediaQuery.sizeOf(context).width >= 760 ? 3 : 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                mainAxisExtent: 224.0 + (scale > 1.0 ? (scale - 1.0) * 42.0 : 0.0),
+              ),
+              itemBuilder: (context, index) => PurchaseGridCard(
+                item: matched[index],
                 store: widget.controller.store,
-                onTap: () => widget.onOpen(purchase),
-              );
-            },
-          );
-        }),
-    ]);
+                onTap: () => widget.onOpen(matched[index]),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }
 

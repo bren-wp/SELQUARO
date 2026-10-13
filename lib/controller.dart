@@ -64,19 +64,21 @@ class VaultController extends ChangeNotifier {
     }
   });
 
-  Future<Uint8List> createBackup(String passphrase) async {
-    if (_mutating) throw StateError('Cannot back up during a vault update');
+  /// Keep the metadata/attachment snapshot consistent with concurrent edits.
+  /// Encryption runs under the same exclusive lock as imports and restores.
+  Future<Uint8List> createBackup(String passphrase) => _exclusive(() async {
     if (error != null) throw StateError('Vault is locked');
+    final snapshot = List<Purchase>.of(purchases);
     final files = <String, Uint8List>{};
-    for (final purchase in purchases) {
+    for (final purchase in snapshot) {
       for (final document in purchase.documents) {
         files[document.id] = await store.readDocument(document);
       }
     }
     return PortableBackup.encrypt(
-      purchases: purchases, files: files, password: passphrase,
+      purchases: snapshot, files: files, password: passphrase,
     );
-  }
+  });
 
   /// Restore only to an empty vault, ensuring no user records are replaced.
   Future<void> restoreBackup(Uint8List ciphertext, String passphrase) => _exclusive(() async {
@@ -97,8 +99,9 @@ class VaultController extends ChangeNotifier {
       purchases = contents.purchases;
       notifyListeners();
     } catch (_) {
+      // A rollback cleanup failure must not hide the original restore error.
       for (final doc in written) {
-        await store.deleteDocument(doc);
+        await _bestEffortDelete(doc);
       }
       rethrow;
     }
