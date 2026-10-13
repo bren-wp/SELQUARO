@@ -33,20 +33,25 @@ class _VaultBackupPageState extends State<VaultBackupPage> {
 
   Future<void> _export() async {
     if (_busy) return;
-    if (_password.text.length < 12 || _password.text != _confirm.text) {
-      _notice('Use a matching backup passphrase of at least 12 characters.');
+    if (_password.text.runes.length < 12 ||
+        _password.text.runes.length > 256 ||
+        _password.text != _confirm.text) {
+      _notice('Use a matching backup passphrase of 12–256 characters.');
       return;
     }
     setState(() => _busy = true);
-    File? temporary;
+    Directory? exportDirectory;
     try {
       final encrypted = await widget.vault.createBackup(_password.text);
       final cache = await getTemporaryDirectory();
-      temporary = File('${cache.path}/SELQUARO-backup.sqvault');
-      await temporary.writeAsBytes(encrypted, flush: true);
+      // Isolate each export so two attempts or a crashed previous export
+      // cannot silently overwrite a user's encrypted archive.
+      exportDirectory = await cache.createTemp('selquaro-export-');
+      final archive = File('${exportDirectory.path}/SELQUARO-backup.sqvault');
+      await archive.writeAsBytes(encrypted, flush: true);
       if (!mounted) return;
       await Share.shareXFiles(
-        [XFile(temporary.path, mimeType: 'application/octet-stream')],
+        [XFile(archive.path, mimeType: 'application/octet-stream')],
         text: 'Encrypted SELQUARO backup. Keep the passphrase somewhere safe.',
       );
       _password.clear();
@@ -54,8 +59,13 @@ class _VaultBackupPageState extends State<VaultBackupPage> {
     } catch (_) {
       _notice('Unable to create the encrypted backup.');
     } finally {
-      if (temporary != null && await temporary.exists()) {
-        await temporary.delete();
+      // Cleanup must not throw from finally and mask a successful share.
+      if (exportDirectory != null) {
+        try {
+          if (await exportDirectory.exists()) {
+            await exportDirectory.delete(recursive: true);
+          }
+        } catch (_) {}
       }
       if (mounted) setState(() => _busy = false);
     }
@@ -67,7 +77,7 @@ class _VaultBackupPageState extends State<VaultBackupPage> {
       _notice('Restore requires an empty vault to protect your existing records.');
       return;
     }
-    if (_password.text.length < 12) {
+    if (_password.text.runes.length < 12 || _password.text.runes.length > 256) {
       _notice('Enter the original backup passphrase.');
       return;
     }
@@ -82,7 +92,8 @@ class _VaultBackupPageState extends State<VaultBackupPage> {
         throw const FormatException('Choose a SELQUARO .sqvault file');
       }
       final file = File(selectedPath);
-      if (await file.length() > 140 * 1024 * 1024) {
+      final length = await file.length();
+      if (length == 0 || length > 140 * 1024 * 1024) {
         throw const FormatException('Backup too large');
       }
       await widget.vault.restoreBackup(await file.readAsBytes(), _password.text);

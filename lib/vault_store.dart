@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 
 import 'document_signatures.dart';
 import 'models.dart';
+import 'vault_catalog.dart';
 
 /// No networking or accounts. Keys live in Android Keystore / Apple Keychain.
 class VaultStore {
@@ -24,8 +25,20 @@ class VaultStore {
   final FlutterSecureStorage _keys;
   final AesGcm _cipher = AesGcm.with256bits();
   SecretKey? _vaultKey;
+  Future<Directory>? _directoryFuture;
 
-  Future<Directory> get _directory async {
+  // Cache the app-private path and iOS backup-exclusion channel operation.
+  // Product thumbnails and backups may access dozens of files in succession.
+  Future<Directory> get _directory {
+    return _directoryFuture ??= _resolveDirectory().catchError(
+      (Object error, StackTrace trace) {
+        _directoryFuture = null;
+        Error.throwWithStackTrace(error, trace);
+      },
+    );
+  }
+
+  Future<Directory> _resolveDirectory() async {
     final base = await getApplicationSupportDirectory();
     final path = Directory('${base.path}/selquaro_v1');
     if (!await path.exists()) await path.create(recursive: true);
@@ -79,7 +92,9 @@ class VaultStore {
     final file = File('${base.path}/vault.bin');
     if (await file.exists()) {
       final plain = await _unseal(await file.readAsBytes());
-      return decodePurchases(utf8.decode(plain));
+      final records = decodePurchases(utf8.decode(plain));
+      VaultCatalog.validate(records);
+      return records;
     }
     // Interrupted first save: recover a fully authenticated pending write.
     // Never treat an undecryptable pending file as an empty, new vault.
@@ -87,6 +102,7 @@ class VaultStore {
     if (await pending.exists()) {
       final plain = await _unseal(await pending.readAsBytes());
       final recovered = decodePurchases(utf8.decode(plain));
+      VaultCatalog.validate(recovered);
       await pending.rename(file.path);
       return recovered;
     }
@@ -94,6 +110,7 @@ class VaultStore {
   }
 
   Future<void> save(List<Purchase> purchases) async {
+    VaultCatalog.validate(purchases);
     final base = await _directory;
     final file = File('${base.path}/vault.bin');
     final temporary = File('${file.path}.pending');
@@ -187,6 +204,7 @@ class VaultStore {
   Future<void> deleteAll() async {
     final directory = await _directory;
     if (await directory.exists()) await directory.delete(recursive: true);
+    _directoryFuture = null;
     await _keys.delete(key: _keyName);
     _vaultKey = null;
   }

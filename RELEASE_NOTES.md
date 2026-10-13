@@ -1,20 +1,19 @@
-# SELQUARO 0.6.0 — Private UI and reliability refinement
+# SELQUARO v0.7.0 — Data integrity, safer backups and file performance
 
 ## Changes
-- Replace the duplicated lock-screen routes with one consistent **full-route privacy curtain**. Authentication no longer destroys unfinished receipt forms or a selected document view. The overlay blocks touches and hides the underlying content from accessibility services.
-- Lock view is scrollable on small screens and remains usable with large accessibility fonts.
-- Improve bottom-tab accessibility through explicitly labelled, selected-state semantics and single-line labels.
-- Guard receipt/photo import and on-device OCR against rapid concurrent save/scan actions; prevent callbacks from updating screens after disposal.
-- Prevent cleanup errors after sharing a document or rolling back imports from crashing the editor or hiding the initial error.
-- Validate monetary values against the maximum accepted by portable backup rules (0–1 trillion) so a purchase cannot be saved successfully but fail all backups solely due to its value.
-- Reject malformed encrypted document IDs before attempting filesystem reads/deletion.
-- Serialize local notification schedule changes: a stale asynchronous cancel/reschedule operation can no longer race against newer edits.
-- Add focused widget tests for locked UI state preservation and small-screen layout, plus tests that reject attachment path traversal.
+- Detect duplicate purchase IDs, duplicate document references, blank identifiers and missing purchase names before saving or loading encrypted local metadata. Invalid indexes fail closed rather than being silently replaced.
+- When a details page deletes an item, resolve its current committed record first. This prevents old document references from deleting an unrelated or newly attached encrypted document after an edit. Repeated stale deletions are rejected.
+- Validate local catalog data without imposing UUID syntax on legacy purchase identifiers, retaining compatibility with previously persisted metadata.
+- Use a unique application-private scratch directory for each encrypted backup export; prevent older exports from being overwritten and cleanup afterward even if sharing fails.
+- Remove abandoned temporary backup export directories and older SELQUARO scratch files at startup.
+- Cache app-private directory resolution and iOS backup-exclusion configuration between receipt and thumbnail reads; reset the cached path after wiping the vault.
+- Enforce the same 12–256 Unicode-character passphrase limits when exporting or restoring; reject empty backup files without attempting decryption.
+- New regression tests for malformed indexes, cross-purchase document duplication, stale deletion safety, and corrupted-state write protection.
 
-## Compatibility
-No vault format or SQBK2 archive change. Existing encrypted receipts/warranties are not rewritten, and there are no user accounts, demo records, cloud sync, telemetry or adverts.
+## Compatibility and privacy
+The existing v1 vault format and SQBK2 portable backup format do not change. No accounts, cloud storage, advertising, analytics or demo purchases.
 
-## Quality and distribution
-Android static analysis, Flutter tests, Android privacy assertions, APK/AAB builds and unsigned iOS compile are required before GitHub prerelease publication. Android packages in this release are **CI test-signed**, not Google Play production/upload signed. Physical-device runtime testing, 1:1 screenshot comparisons and permanent distribution signatures remain necessary before a production-ready designation.
+## Validation and release
+GitHub Actions must pass Flutter analysis, tests, Android security assertions, Android APK and AAB builds, and unsigned iOS compilation before publishing. Android prerelease packages are **test-signed** and not production Google Play upload artifacts. An unsigned iOS compile does not constitute an installable IPA. Physical device QA and visual reference parity remain separate, unverified release requirements.
 
-Always keep your original receipts and a separately verified encrypted backup before replacing test-signed installations.
+**Important:** Before replacing a test-signed installation, safely export and verify an encrypted backup and keep the passphrase. Deleting an existing installation may permanently erase app-private data.

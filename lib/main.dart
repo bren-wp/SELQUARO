@@ -51,23 +51,34 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
     _boot();
   }
 
-  Future<void> _purgeOldShareFiles() async {
-    // Remove only SELQUARO's older temporary plaintext share copies.
+  Future<void> _purgeTemporaryExports() async {
     try {
-      final directory = await getTemporaryDirectory();
-      final pattern = RegExp(r'^[0-9a-fA-F-]{36}_[^/\\]+$');
-      await for (final entry in directory.list(followLinks: false)) {
-        if (entry is File && pattern.hasMatch(entry.uri.pathSegments.last)) {
-          try { await entry.delete(); } catch (_) {}
+      final cache = await getTemporaryDirectory();
+      final oldShareFile = RegExp(r'^[0-9a-fA-F-]{36}_[^/\\]+$');
+      await for (final entry in cache.list(followLinks: false)) {
+        final name = entry.uri.pathSegments
+            .where((segment) => segment.isNotEmpty).last;
+        try {
+          if (entry is File &&
+              (oldShareFile.hasMatch(name) ||
+               name == 'SELQUARO-backup.sqvault')) {
+            await entry.delete();
+          } else if (entry is Directory &&
+                     name.startsWith('selquaro-export-')) {
+            // Only app-private scratch folders created by our exporter.
+            await entry.delete(recursive: true);
+          }
+        } catch (_) {
+          // Cache cleanup is best effort and may not prevent vault access.
         }
       }
     } catch (_) {
-      // A failed cache cleanup must not lock users out of valid vaults.
+      // Unavailable cache storage cannot block encrypted vault access.
     }
   }
 
   Future<void> _boot() async {
-    await _purgeOldShareFiles();
+    await _purgeTemporaryExports();
     try {
       biometric = await _securePrefs.read(key: 'selquaro.lock.enabled') == 'true';
     } catch (_) {
