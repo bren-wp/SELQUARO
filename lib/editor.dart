@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import 'controller.dart';
+import 'document_signatures.dart';
 import 'models.dart';
 import 'theme.dart';
 
@@ -86,10 +87,26 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
       return;
     }
     final source = File(path);
-    if (!await source.exists() || await source.length() > 20 * 1024 * 1024) {
-      _message('File is missing or larger than 20 MB');
+    if (!await source.exists() ||
+        await source.length() == 0 ||
+        await source.length() > DocumentSignatures.maxBytes) {
+      _message('The selected document must be between 1 byte and 20 MB.');
       return;
     }
+    try {
+      DocumentSignatures.validate(
+        name: fileName,
+        mimeType: DocumentSignatures.mimeTypeForName(fileName),
+        bytes: await source.readAsBytes(),
+      );
+    } on FormatException {
+      _message('The selected document is invalid or its extension is incorrect.');
+      return;
+    } catch (_) {
+      _message('Cannot read the selected document.');
+      return;
+    }
+    if (!mounted) return;
     final pending = _PendingFile(path, fileName, temporary: temporary);
     setState(() {
       _files.add(pending);

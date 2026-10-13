@@ -49,8 +49,32 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
     _boot();
   }
 
+  Future<void> _purgeOldShareFiles() async {
+    // Remove only SELQUARO's older temporary plaintext share copies.
+    try {
+      final directory = await getTemporaryDirectory();
+      final pattern = RegExp(r'^[0-9a-fA-F-]{36}_[^/\\]+$');
+      await for (final entry in directory.list(followLinks: false)) {
+        if (entry is File && pattern.hasMatch(entry.uri.pathSegments.last)) {
+          try { await entry.delete(); } catch (_) {}
+        }
+      }
+    } catch (_) {
+      // A failed cache cleanup must not lock users out of valid vaults.
+    }
+  }
+
   Future<void> _boot() async {
-    biometric = await _securePrefs.read(key: 'selquaro.lock.enabled') == 'true';
+    await _purgeOldShareFiles();
+    try {
+      biometric = await _securePrefs.read(key: 'selquaro.lock.enabled') == 'true';
+    } catch (_) {
+      // Do not open the vault when its OS secure preferences cannot be read.
+      vault.error = 'Secure device settings are unavailable. No records were deleted.';
+      vault.loaded = true;
+      if (mounted) setState(() {});
+      return;
+    }
     if (biometric) {
       locked = true;
       if (mounted) setState(() {});
@@ -98,7 +122,9 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused && biometric && !_authInProgress) {
+    if ((state == AppLifecycleState.inactive ||
+         state == AppLifecycleState.paused) &&
+        biometric && !_authInProgress && !locked) {
       setState(() => locked = true);
     }
   }
