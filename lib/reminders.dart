@@ -18,6 +18,17 @@ class WarrantyReminders {
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   bool enabled = false;
   bool available = false;
+  Future<void> _scheduleQueue = Future<void>.value();
+
+  /// Serialize cancel/recreate operations to avoid stale reminder schedules.
+  Future<void> _enqueue(Future<void> Function() action) {
+    final operation = _scheduleQueue.then((_) => action());
+    _scheduleQueue = operation.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {},
+    );
+    return operation;
+  }
 
   Future<void> initialize() async {
     tzdata.initializeTimeZones();
@@ -67,7 +78,12 @@ class WarrantyReminders {
     return true;
   }
 
-  Future<void> sync(List<Purchase> items) async {
+  Future<void> sync(List<Purchase> items) {
+    final snapshot = List<Purchase>.of(items);
+    return _enqueue(() => _syncNow(snapshot));
+  }
+
+  Future<void> _syncNow(List<Purchase> items) async {
     if (!available) return;
     await _notifications.cancelAll();
     if (!enabled) return;
@@ -117,11 +133,11 @@ class WarrantyReminders {
     }
   }
 
-  Future<void> clear() async {
+  Future<void> clear() => _enqueue(() async {
+    enabled = false;
     if (available) await _notifications.cancelAll();
     await _preferences.delete(key: preferenceKey);
-    enabled = false;
-  }
+  });
 }
 
 class _PlannedReminder {

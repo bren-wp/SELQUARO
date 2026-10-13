@@ -1,4 +1,4 @@
-# SELQUARO privacy and security (0.5.0)
+# SELQUARO privacy and security (0.6.0)
 
 SELQUARO does not require user accounts or a cloud server. No advertising, telemetry, or analytics integrations are built in.
 
@@ -11,7 +11,7 @@ SELQUARO does not require user accounts or a cloud server. No advertising, telem
 
 ## Screens and user interaction
 - On Android, FLAG_SECURE is enabled to block system screenshots and recent-task captures of sensitive contents.
-- The optional device-authentication lock overlays every route, not merely the dashboard, when backgrounded.
+- The optional device-authentication curtain masks every route on background, blocks interactions and excludes underlying routes from accessibility semantics without destroying unsaved forms.
 - Sharing a document is explicit, creates a temporary plaintext copy for the platform share sheet and removes that copy after the share operation returns. Startup cleanup removes files matching the earlier SELQUARO share-cache naming scheme. A recipient application can still retain what the user shares.
 - Previewing a document decrypts it into runtime memory. Malware, rooted/jailbroken OS instances, memory acquisition, and hostile keyboards are beyond the app threat model.
 
@@ -28,3 +28,9 @@ SELQUARO does not require user accounts or a cloud server. No advertising, telem
 ## Distribution and review
 - Android GitHub prerelease binaries are **test-signed**, not production-signed.
 - iOS CI is unsigned compile validation only. Actual device/simulator smoke tests, security review, signing, and pixel-level UI validation have not been certified.
+
+## v0.6.0 safety improvements
+- Reject malformed attachment identifiers before reading/deleting disk paths.
+- Device-local reminder cancellation/rescheduling is serialized to prevent stale asynchronous jobs from winning over recent edits.
+- Import/recognition controls block concurrent operations while a receipt is being saved or scanned; asynchronous OCR callbacks check widget mounting.
+- An unsuccessful cache cleanup after sharing does not crash the app.

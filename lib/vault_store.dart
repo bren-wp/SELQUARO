@@ -145,7 +145,54 @@ class VaultStore {
     return document;
   }
 
+  // Never interpolate an untrusted document ID into a filesystem path.
+  // The imported metadata and portable archives both use UUID identifiers.
+  static final _documentId = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}
+    final directory = await _directory;
+    return _unseal(await File('${directory.path}/${document.id}.bin').readAsBytes());
+  }
+
+  /// Import validated backup bytes without writing plaintext to disk.
+  Future<void> restoreDocumentBytes(VaultDocument document, Uint8List contents) async {
+    if (!_documentId.hasMatch(document.id)) {
+      throw const FormatException('Invalid restored attachment identifier');
+    }
+    if (contents.isEmpty || contents.length > _maxFileBytes) {
+      throw const FormatException('Invalid restored attachment size');
+    }
+    DocumentSignatures.validate(
+      name: document.name, mimeType: document.mimeType, bytes: contents);
+    final directory = await _directory;
+    final target = File(directory.path + '/' + document.id + '.bin');
+    await _writeNewEncrypted(target, contents);
+  }
+
+  Future<void> deleteDocument(VaultDocument document) async {
+    _verifyDocumentId(document);
+    final directory = await _directory;
+    final file = File('${directory.path}/${document.id}.bin');
+    if (await file.exists()) await file.delete();
+  }
+
+  Future<void> deleteAll() async {
+    final directory = await _directory;
+    if (await directory.exists()) await directory.delete(recursive: true);
+    await _keys.delete(key: _keyName);
+    _vaultKey = null;
+  }
+}
+,
+  );
+
+  static void _verifyDocumentId(VaultDocument document) {
+    if (!_documentId.hasMatch(document.id)) {
+      throw const FormatException('Invalid encrypted attachment identifier');
+    }
+  }
+
   Future<Uint8List> readDocument(VaultDocument document) async {
+    _verifyDocumentId(document);
     final directory = await _directory;
     return _unseal(await File('${directory.path}/${document.id}.bin').readAsBytes());
   }
