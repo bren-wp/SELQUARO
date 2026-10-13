@@ -1,20 +1,26 @@
-# SELQUARO 0.3.0 — Data integrity and privacy hardening
+# SELQUARO 0.4.0 — vault reliability and safer document imports
 
-## Changes
-- **Missing-key protection:** never generate a replacement encryption key while an older encrypted vault or encrypted attachment is still on disk; preserve data for recovery and show an unlock error.
-- **Backup preflight checks:** validate purchase identifiers, duplicate records, filenames, MIME types, document references, product cover images, amounts, dates, and attachment limits before accepting an archive.
-- **Safe backup export:** reject malformed vault contents instead of writing an internally inconsistent portable backup.
-- **Locked route protection:** the authentication curtain now covers all Flutter Navigator routes, including an open PDF/document page or editor after the app is backgrounded.
-- **Android content privacy:** set FLAG_SECURE on the host Activity to block OS screenshots, screen recording captures, and readable recent-app snapshots; disable cleartext transport in the release app manifest.
-- New regression tests for backup integrity, orphaned/missing attachments, duplicate purchase IDs, stale cover references, and invalid metadata.
-- Android APK + AAB release CI, SHA256 verification, and iOS unsigned compilation remain required.
+## Improvements
+- Validate PDF, JPEG, PNG and WebP binary headers, filename and MIME type before accepting imported files. Reject renamed unsupported files instead of relying on extensions alone.
+- Validate document signatures again during encrypted imports and portable-backup restore.
+- Recover a fully authenticated pending metadata save if the first vault write was interrupted, without resetting existing encrypted information.
+- Remove partially written encrypted attachment files after failed import or restore.
+- Ensure a failed *post-commit* deletion of obsolete encrypted attachments cannot mistakenly undo or mark successful purchase saves/deletions as failed.
+- Reject overlapping vault mutations to prevent concurrent writes from silently overwriting records.
+- Lock the app when backgrounded or inactive if device authentication is enabled, including screens opened through Navigator.
+- Clean up SELQUARO temporary plaintext share files left behind by older releases.
+- Handle inaccessible secure device settings without exposing purchases.
+- Add regression tests for transaction ordering, failed cleanup, simultaneous updates, valid document headers and spoofed extensions.
 
-## Distribution notes
-The attached APK and AAB use GitHub CI's testing/debug signing identity and are **not Google Play upload-signed**. Do not upload them to production Google Play. The iOS app is compiled without signing, not distributed as an IPA.
+## Signing, testing and release
+GitHub Actions runs Dart analysis, unit tests, Android privacy checks, Android APK and AAB builds, and an unsigned iOS compilation check before tagging this prerelease.
 
-This update retains the v0.2.0 encrypted vault format and the SQBK2 portable backup format. No user accounts, network backend, analytics, advertising, or sample purchase records were added.
+**The APK and AAB are test-signed**. Neither is a production Google Play upload artifact until a persistent upload signing key is configured. iOS requires Apple signing before distribution.
 
-## Known limits
-- Device smoke tests, full visual comparison with the design references, accessibility audit, and production signing still require validation. CI compilation does not prove pixel-perfect 1:1 parity or crash-free runtime behavior.
-- FLAG_SECURE prevents taking screenshots of SELQUARO on Android, including for support; the policy is intentionally privacy-focused.
-- Users must keep backup passphrases and confirm restoration on an empty vault before deleting originals.
+## Data compatibility
+- Vault schema remains version 1, with the same per-document AES-256-GCM encryption format.
+- Portable backups remain SQBK2. Existing valid encrypted purchases and attachments are not migrated or reset.
+- No accounts, no backend, no advertisements, and no seeded/demo purchases.
+
+## Remaining QA
+Pixel-for-pixel parity with design reference images, device-level end-to-end smoke testing and store signing cannot be inferred from CI and are not claimed completed. Keep independent copies of original receipts and your encrypted backup passphrase.

@@ -12,6 +12,19 @@ class VaultController extends ChangeNotifier {
   List<Purchase> purchases = const [];
   bool loaded = false;
   String? error;
+  bool _mutating = false;
+
+  Future<T> _exclusive<T>(Future<T> Function() operation) async {
+    if (_mutating) throw StateError('A vault update is already in progress');
+    _mutating = true;
+    try { return await operation(); } finally { _mutating = false; }
+  }
+
+  Future<void> _bestEffortDelete(VaultDocument document) async {
+    // Cleanup failures only leave encrypted orphan bytes; saved purchases
+    // must not be rolled back or reported as unsaved after the commit.
+    try { await store.deleteDocument(document); } catch (_) { /* retry by maintenance */ }
+  }
 
   Future<void> initialize() async {
     try {
@@ -25,7 +38,7 @@ class VaultController extends ChangeNotifier {
     }
   }
 
-  Future<void> upsert(Purchase item) async {
+  Future<void> upsert(Purchase item) => _exclusive(() async {
     if (error != null) throw StateError('Vault is locked');
     final previousDocuments = purchases.where((entry) => entry.id == item.id).expand((entry) => entry.documents).toList();
     final updated = [...purchases.where((entry) => entry.id != item.id), item];
@@ -35,23 +48,24 @@ class VaultController extends ChangeNotifier {
     final remainingIds = item.documents.map((d) => d.id).toSet();
     for (final old in previousDocuments) {
       if (!remainingIds.contains(old.id)) {
-        await store.deleteDocument(old);
+        await _bestEffortDelete(old);
       }
     }
-  }
+  });
 
-  Future<void> remove(Purchase item) async {
+  Future<void> remove(Purchase item) => _exclusive(() async {
     if (error != null) throw StateError('Vault is locked');
     final updated = purchases.where((entry) => entry.id != item.id).toList();
     await store.save(updated);
     purchases = updated;
     notifyListeners();
     for (final document in item.documents) {
-      await store.deleteDocument(document);
+      await _bestEffortDelete(document);
     }
-  }
+  });
 
   Future<Uint8List> createBackup(String passphrase) async {
+    if (_mutating) throw StateError('Cannot back up during a vault update');
     if (error != null) throw StateError('Vault is locked');
     final files = <String, Uint8List>{};
     for (final purchase in purchases) {
@@ -65,7 +79,7 @@ class VaultController extends ChangeNotifier {
   }
 
   /// Restore only to an empty vault, ensuring no user records are replaced.
-  Future<void> restoreBackup(Uint8List ciphertext, String passphrase) async {
+  Future<void> restoreBackup(Uint8List ciphertext, String passphrase) => _exclusive(() async {
     if (error != null) throw StateError('Vault is locked');
     if (purchases.isNotEmpty) {
       throw StateError('For safety, restore is available only when the vault is empty');
@@ -88,14 +102,14 @@ class VaultController extends ChangeNotifier {
       }
       rethrow;
     }
-  }
+  });
 
-  Future<void> clear() async {
+  Future<void> clear() => _exclusive(() async {
     await store.deleteAll();
     purchases = [];
     error = null;
     notifyListeners();
-  }
+  });
 
   List<Purchase> get ordered {
     final list = [...purchases];
