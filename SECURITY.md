@@ -1,31 +1,30 @@
-# SELQUARO security and privacy (0.2.0)
+# SELQUARO privacy and security (0.3.0)
 
-## Data flow and trust boundaries
-- SELQUARO has no account system, backend, ads, analytics, telemetry, remote synchronization or purchase/demo dataset.
-- Locally imported documents are encrypted into app-private storage. The original selected files are not modified.
-- On-device Google ML Kit OCR operates on receipt images; extracted text must be manually reviewed.
-- Android app backups are disabled. iOS private vault directory is marked as excluded from device backup.
+SELQUARO does not require user accounts or a cloud server. No advertising, telemetry, or analytics integrations are built in.
 
-## At-rest encryption
-- A random 256-bit vault key is stored in the system's protected key store (Android Keystore / iOS Keychain, via flutter_secure_storage).
-- Each metadata update and imported file is sealed with AES-256-GCM, a fresh 96-bit nonce and an authentication tag.
-- Authentication failure must never silently erase or regenerate existing vault records.
-- Document preview decrypts into app memory; user-requested sharing writes a temporary plaintext copy for the OS share sheet and deletes it upon return. Recipient apps may retain shared files.
-- The operating system, keyboards, screenshots, malware, rooted devices and access to unlocked runtime memory remain outside a mobile application's full control.
+## Local vault
+- AES-256-GCM authenticated encryption per metadata save and document, using fresh nonces.
+- Random 256-bit vault key backed by device Keystore/Keychain secure storage.
+- A missing OS key **never causes silent generation of another key** over existing ciphertext. When encrypted files are present, vault access fails closed to protect recovery options.
+- Imported files are stored in an app-private encrypted directory. Original external documents are not modified.
+- Backup of app-private vault storage by Android is disabled; iOS excludes the vault directory from OS backup.
 
-## Backups
-- Portable SQBK2 archives contain encrypted records and attachments with AES-256-GCM.
-- The backup key is derived from a user-provided 12+ character passphrase using PBKDF2-HMAC-SHA256 (210,000 iterations, random 128-bit salt), fresh random nonce and authentication.
-- Backup export intentionally invokes the OS share sheet with ciphertext only. Restore validates file limits, document references, IDs and authentication and will not overwrite an existing non-empty vault.
-- A forgotten passphrase cannot be recovered. Protect exported backups and test restore safely.
+## Screens and user interaction
+- On Android, FLAG_SECURE is enabled to block system screenshots and recent-task captures of sensitive contents.
+- The optional device-authentication lock overlays every route, not merely the dashboard, when backgrounded.
+- Sharing a document is explicit, creates a temporary plaintext copy for the platform share sheet and removes that copy after the share operation returns. A recipient application can still retain what the user shares.
+- Previewing a document decrypts it into runtime memory. Malware, rooted/jailbroken OS instances, memory acquisition, and hostile keyboards are beyond the app threat model.
 
-## Notifications and permissions
-- Reminders are off by default and require permission.
-- Notifications contain generic text, not product names, to reduce lock-screen data exposure.
-- Schedules are inexact and are subject to the device's battery/notification policies; delivery is not guaranteed.
-- No exact alarm permission and no online push notification provider are requested.
+## Portable archives
+- Portable SQBK2 backups encrypt metadata and attachments with AES-256-GCM, using PBKDF2-HMAC-SHA256 with 210,000 iterations and a random 128-bit salt.
+- Preflight validation requires unique well-formed IDs, matching attachment references and types, valid purchases, complete cover-photo references, and size limits.
+- Restore is only permitted into an empty vault; authentication or format failures must occur before any writes.
+- Forgotten passphrases cannot be recovered. Archives can only be shared through explicit user action.
 
-## Supply chain / distribution
-- Android APK/AAB in GitHub prereleases use a testing configuration, not a permanent Play Store upload signature.
-- No signing keys, Apple credentials, passphrases or production passwords belong in GitHub history.
-- Device QA, penetration review and production signing remain required prior to publishing to stores.
+## Reminders
+- Warranty reminders are off by default, use opt-in device notification permissions, and contain generic lock-screen-safe text.
+- Inexact scheduling may be deferred by system energy policy; delivery is not guaranteed.
+
+## Distribution and review
+- Android GitHub prerelease binaries are **test-signed**, not production-signed.
+- iOS CI is unsigned compile validation only. Actual device/simulator smoke tests, security review, signing, and pixel-level UI validation have not been certified.

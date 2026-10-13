@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 
 import 'models.dart';
+import 'backup_integrity.dart';
 
 /// Password-protected portable backup. No servers and no plaintext temp files.
 /// Header SQBK2 + 16-byte salt + 12-byte nonce + ciphertext + 16-byte MAC.
@@ -32,6 +33,7 @@ class PortableBackup {
     required String password,
   }) async {
     _checkPassword(password);
+    BackupIntegrity.validate(purchases, files);
     if (files.length > maxDocuments) {
       throw const FormatException('Too many attachments for one backup');
     }
@@ -97,6 +99,7 @@ class PortableBackup {
     if (files.length != ids.length) {
       throw const FormatException('Backup contains unreferenced attachments');
     }
+    BackupIntegrity.validate(records, files);
     return BackupContents(records, files);
   }
 }

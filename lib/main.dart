@@ -231,6 +231,33 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'SELQUARO', theme: Sq.theme, debugShowCheckedModeBanner: false,
+    // Covers every Navigator route, including open PDFs or edit sheets, when
+    // the app enters the background. Locking only 'home' is insufficient.
+    builder: (context, navigator) => Stack(children: [
+      if (navigator != null) navigator,
+      if (locked)
+        Positioned.fill(child: Material(
+          color: Sq.bg,
+          child: SafeArea(child: Center(child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.shield_outlined, color: Sq.cyan, size: 72),
+              const SizedBox(height: 20),
+              const Text('SELQUARO is locked',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              const Text('Unlock to view your private documents.',
+                textAlign: TextAlign.center, style: TextStyle(color: Sq.muted)),
+              const SizedBox(height: 22),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 340),
+                child: SqButton(text: 'Unlock', icon: Icons.lock_open,
+                  onPressed: _unlock),
+              ),
+            ]),
+          ))),
+        )),
+    ]),
     home: locked
       ? Scaffold(body: SafeArea(child: Center(child: Padding(
           padding: const EdgeInsets.all(28),
