@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'portable_backup.dart';
 import 'models.dart';
+import 'vault_catalog.dart';
 import 'vault_store.dart';
 
 class VaultController extends ChangeNotifier {
@@ -28,7 +29,9 @@ class VaultController extends ChangeNotifier {
 
   Future<void> initialize() async {
     try {
-      purchases = await store.load();
+      final loadedPurchases = await store.load();
+      VaultCatalog.validate(loadedPurchases);
+      purchases = loadedPurchases;
     } catch (_) {
       // Never reset or overwrite an encrypted vault after a read failure.
       error = 'The encrypted vault could not be unlocked. No data was deleted.';
@@ -42,6 +45,7 @@ class VaultController extends ChangeNotifier {
     if (error != null) throw StateError('Vault is locked');
     final previousDocuments = purchases.where((entry) => entry.id == item.id).expand((entry) => entry.documents).toList();
     final updated = [...purchases.where((entry) => entry.id != item.id), item];
+    VaultCatalog.validate(updated);
     await store.save(updated);
     purchases = updated;
     notifyListeners();
@@ -55,11 +59,23 @@ class VaultController extends ChangeNotifier {
 
   Future<void> remove(Purchase item) => _exclusive(() async {
     if (error != null) throw StateError('Vault is locked');
+    // Use the current committed record, not a stale details-page snapshot.
+    // Otherwise the wrong documents could be deleted after an edit.
+    Purchase? current;
+    for (final entry in purchases) {
+      if (entry.id == item.id) {
+        current = entry;
+        break;
+      }
+    }
+    if (current == null) {
+      throw StateError('This purchase has already been removed');
+    }
     final updated = purchases.where((entry) => entry.id != item.id).toList();
     await store.save(updated);
     purchases = updated;
     notifyListeners();
-    for (final document in item.documents) {
+    for (final document in current.documents) {
       await _bestEffortDelete(document);
     }
   });

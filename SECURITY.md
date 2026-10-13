@@ -1,4 +1,4 @@
-# SELQUARO privacy and security (0.6.0)
+# SELQUARO privacy and security (0.7.0)
 
 SELQUARO does not require user accounts or a cloud server. No advertising, telemetry, or analytics integrations are built in.
 
@@ -29,8 +29,16 @@ SELQUARO does not require user accounts or a cloud server. No advertising, telem
 - Android GitHub prerelease binaries are **test-signed**, not production-signed.
 - iOS CI is unsigned compile validation only. Actual device/simulator smoke tests, security review, signing, and pixel-level UI validation have not been certified.
 
-## v0.6.0 safety improvements
+## v0.7.0 safety improvements
 - Reject malformed attachment identifiers before reading/deleting disk paths.
 - Device-local reminder cancellation/rescheduling is serialized to prevent stale asynchronous jobs from winning over recent edits.
 - Import/recognition controls block concurrent operations while a receipt is being saved or scanned; asynchronous OCR callbacks check widget mounting.
 - An unsuccessful cache cleanup after sharing does not crash the app.
+
+## v0.7.0 data integrity and backup hygiene
+
+- Reject duplicate and blank local purchase/attachment identifiers on load and before saving; do not overwrite corrupted encrypted metadata.
+- Purchase deletion resolves the current stored record rather than trusting stale attachments in an earlier UI snapshot.
+- Each encrypted backup uses a unique private temporary directory. The folder is removed after the share operation; abandoned SELQUARO scratch files are cleaned on next launch.
+- Reuse the private vault-directory lookup and iOS backup-exclusion operation while the vault is active. Clearing the vault invalidates this cache.
+- Existing encrypted vault and SQBK2 archive formats remain unchanged. A successful CI build does not substitute for device tests or cryptographic review.
