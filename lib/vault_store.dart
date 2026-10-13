@@ -38,6 +38,17 @@ class VaultStore {
   Future<SecretKey> get _key async {
     if (_vaultKey != null) return _vaultKey!;
     final existing = await _keys.read(key: _keyName);
+    if (existing == null) {
+      // Never silently create a new key over an existing encrypted vault.
+      // Keystore/keychain loss is unrecoverable without a portable backup.
+      final directory = await _directory;
+      final entries = await directory.list(followLinks: false).toList();
+      if (entries.any((entity) =>
+          entity is File &&
+          (entity.path.endsWith('.bin') || entity.path.endsWith('.pending')))) {
+        throw StateError('Encrypted data exists but its decryption key is missing');
+      }
+    }
     if (existing != null) {
       final bytes = base64Decode(existing);
       if (bytes.length != 32) throw const FormatException('Invalid vault encryption key');

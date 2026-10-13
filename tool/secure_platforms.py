@@ -7,7 +7,7 @@ manifest = Path('android/app/src/main/AndroidManifest.xml')
 if manifest.exists():
     xml = manifest.read_text()
     if 'android:allowBackup=' not in xml:
-        xml = xml.replace('<application', '<application android:allowBackup="false" android:fullBackupContent="false"', 1)
+        xml = xml.replace('<application', '<application android:allowBackup="false" android:fullBackupContent="false" android:usesCleartextTraffic="false"', 1)
     if 'android.permission.CAMERA' not in xml:
         xml = xml.replace('<application', '<uses-permission android:name="android.permission.CAMERA" />\n    <application', 1)
     if 'android.permission.RECEIVE_BOOT_COMPLETED' not in xml:
@@ -34,6 +34,24 @@ if activity.exists():
     kotlin = activity.read_text().replace('import io.flutter.embedding.android.FlutterActivity',
         'import io.flutter.embedding.android.FlutterFragmentActivity')
     kotlin = kotlin.replace(': FlutterActivity()', ': FlutterFragmentActivity()')
+    # Android blocks OS screenshots and recent-app thumbnails of private data.
+    if 'FLAG_SECURE' not in kotlin:
+        kotlin = kotlin.replace(
+            'import io.flutter.embedding.android.FlutterFragmentActivity',
+            'import io.flutter.embedding.android.FlutterFragmentActivity\n'
+            'import android.os.Bundle\n'
+            'import android.view.WindowManager',
+        )
+        kotlin = kotlin.replace(
+            ': FlutterFragmentActivity()',
+            ''': FlutterFragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+}''',
+            1,
+        )
     activity.write_text(kotlin)
 
 podfile = Path('ios/Podfile')

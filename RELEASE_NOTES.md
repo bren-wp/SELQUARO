@@ -1,25 +1,20 @@
-# SELQUARO 0.2.0 — Android feature and privacy update
+# SELQUARO 0.3.0 — Data integrity and privacy hardening
 
-## Delivered
-- Privacy-first Android/iOS shared codebase and refined dark SELQUARO interface
-- On-device encrypted receipt and warranty storage without accounts or cloud synchronization
-- Camera capture, local text recognition, image/PDF imports and searchable purchase records
-- Two-column product library with user-selected encrypted product photographs (icon fallback)\n- In-app document viewer with pinch zoom for images and native PDF rendering from decrypted memory
-- Opt-in device-local warranty reminders 30, 7 and 1 days ahead of user-entered expiry dates
-- Portable passphrase-encrypted .sqvault backup and restore (AES-256-GCM, PBKDF2-HMAC-SHA256, 210k iterations)
-- Protected restore into an empty vault only, to prevent accidental overwrites
-- Expanded automated tests for backups, tamper rejection, incorrect passphrase and empty-state UI
-- Android CI APK and AAB artifacts with SHA-256 checksums; iOS unsigned compile check
+## Changes
+- **Missing-key protection:** never generate a replacement encryption key while an older encrypted vault or encrypted attachment is still on disk; preserve data for recovery and show an unlock error.
+- **Backup preflight checks:** validate purchase identifiers, duplicate records, filenames, MIME types, document references, product cover images, amounts, dates, and attachment limits before accepting an archive.
+- **Safe backup export:** reject malformed vault contents instead of writing an internally inconsistent portable backup.
+- **Locked route protection:** the authentication curtain now covers all Flutter Navigator routes, including an open PDF/document page or editor after the app is backgrounded.
+- **Android content privacy:** set FLAG_SECURE on the host Activity to block OS screenshots, screen recording captures, and readable recent-app snapshots; disable cleartext transport in the release app manifest.
+- New regression tests for backup integrity, orphaned/missing attachments, duplicate purchase IDs, stale cover references, and invalid metadata.
+- Android APK + AAB release CI, SHA256 verification, and iOS unsigned compilation remain required.
 
-## Distribution
-The Android APK and AAB are **test builds** signed by CI with the default ephemeral Android signing configuration. They are not Google Play upload-signed and must not be published as production packages. Final app store distribution requires a stable signing key supplied through protected CI secrets.
+## Distribution notes
+The attached APK and AAB use GitHub CI's testing/debug signing identity and are **not Google Play upload-signed**. Do not upload them to production Google Play. The iOS app is compiled without signing, not distributed as an IPA.
 
-iOS compilation is verified but no installable IPA is distributed without Apple Developer signing credentials.
+This update retains the v0.2.0 encrypted vault format and the SQBK2 portable backup format. No user accounts, network backend, analytics, advertising, or sample purchase records were added.
 
-## Known limitations
-- Design follows SELQUARO reference compositions, but exact pixel-level 1:1 parity on real hardware has not been verified. No synthetic screenshots are passed off as device captures.
-- Reminders are optional; the operating system may delay inexact notifications, and iOS/Android notification permission must be granted.
-- OCR output is a suggestion and should be reviewed.
-- App installation, navigation and scanning still require physical-device smoke testing.
-- Backups require a separate passphrase; losing it makes the portable file unrecoverable.
-- No user accounts, cloud service, advertising SDK, remote analytics or demo purchases.
+## Known limits
+- Device smoke tests, full visual comparison with the design references, accessibility audit, and production signing still require validation. CI compilation does not prove pixel-perfect 1:1 parity or crash-free runtime behavior.
+- FLAG_SECURE prevents taking screenshots of SELQUARO on Android, including for support; the policy is intentionally privacy-focused.
+- Users must keep backup passphrases and confirm restoration on an empty vault before deleting originals.
