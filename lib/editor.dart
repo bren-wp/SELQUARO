@@ -34,6 +34,8 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
   String _currency = 'EUR';
   final List<_PendingFile> _files = [];
   late List<VaultDocument> _saved;
+  String? _coverId;
+  _PendingFile? _pendingCover;
   bool _saving = false;
   bool _scanning = false;
   String? _ocrHint;
@@ -45,6 +47,7 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
     super.initState();
     final item = widget.existing;
     _saved = [...?item?.documents];
+    _coverId = item?.coverDocumentId;
     if (item != null) {
       _name.text = item.name;
       _merchant.text = item.merchant;
@@ -76,7 +79,7 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
     unawaited(File(file.path).delete().then<void>((_) {}).catchError((Object _) {}));
   }
 
-  Future<void> _addSource(String path, String fileName, {bool temporary = false}) async {
+  Future<void> _addSource(String path, String fileName, {bool temporary = false, bool productPhoto = false}) async {
     final extension = fileName.split('.').last.toLowerCase();
     if (!['jpg', 'jpeg', 'png', 'webp', 'pdf'].contains(extension)) {
       _message('Only images and PDF files are supported');
@@ -87,8 +90,12 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
       _message('File is missing or larger than 20 MB');
       return;
     }
-    setState(() => _files.add(_PendingFile(path, fileName, temporary: temporary)));
-    if (['jpg', 'jpeg', 'png'].contains(extension)) await _extract(path);
+    final pending = _PendingFile(path, fileName, temporary: temporary);
+    setState(() {
+      _files.add(pending);
+      if (productPhoto) _pendingCover = pending;
+    });
+    if (!productPhoto && ['jpg', 'jpeg', 'png'].contains(extension)) await _extract(path);
   }
 
   Future<void> _camera() async {
@@ -107,6 +114,19 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
         await _addSource(result.files.single.path!, result.files.single.name);
       }
     } catch (_) { _message('Could not import the selected file'); }
+  }
+
+  Future<void> _pickProductPhoto() async {
+    try {
+      final photo = await ImagePicker().pickImage(
+        source: ImageSource.gallery, imageQuality: 85, maxWidth: 1600,
+      );
+      if (photo != null) {
+        await _addSource(photo.path, photo.name, temporary: true, productPhoto: true);
+      }
+    } catch (_) {
+      _message('Unable to choose a product photo.');
+    }
   }
 
   Future<void> _extract(String path) async {
@@ -154,13 +174,16 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
     if (!_form.currentState!.validate() || _saving) return;
     setState(() => _saving = true);
     final imported = <VaultDocument>[];
+    String? savedCover = _coverId;
     try {
       for (final pending in _files) {
         final extension = pending.name.split('.').last.toLowerCase();
         final mime = extension == 'pdf' ? 'application/pdf' : 'image/${extension == 'jpg' ? 'jpeg' : extension}';
-        imported.add(await widget.controller.store.importDocument(
+        final file = await widget.controller.store.importDocument(
           sourcePath: pending.path, fileName: pending.name, mimeType: mime,
-        ));
+        );
+        imported.add(file);
+        if (identical(pending, _pendingCover)) savedCover = file.id;
       }
       final purchase = Purchase(
         id: widget.existing?.id ?? _uuid.v4(),
@@ -170,6 +193,7 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
         currency: _currency, warrantyEndsAt: _warrantyEnd,
         serialNumber: _serial.text.trim(), notes: _notes.text.trim(),
         documents: [..._saved, ...imported],
+        coverDocumentId: savedCover,
       );
       await widget.controller.upsert(purchase);
       if (mounted) Navigator.of(context).pop();
@@ -242,6 +266,16 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
         const SizedBox(height: 16),
         const Text('DOCUMENTS', style: TextStyle(color: Sq.cyan, letterSpacing: 2, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
+        OutlinedButton.icon(onPressed: _pickProductPhoto,
+          icon: const Icon(Icons.add_photo_alternate_outlined),
+          label: Text(_pendingCover == null && _coverId == null ? 'Add product photo' : 'Change product photo')),
+        if (_pendingCover != null) Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: ClipRRect(borderRadius: BorderRadius.circular(14),
+            child: Image.file(File(_pendingCover!.path),
+              height: 148, width: double.infinity, fit: BoxFit.contain)),
+        ),
+        const SizedBox(height: 10),
         Wrap(spacing: 10, runSpacing: 8, children: [
           OutlinedButton.icon(onPressed: _camera, icon: const Icon(Icons.photo_camera_outlined), label: const Text('Scan receipt')),
           OutlinedButton.icon(onPressed: _pickFile, icon: const Icon(Icons.attach_file), label: const Text('Import image / PDF')),
@@ -250,12 +284,12 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
         if (_ocrHint != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(_ocrHint!, style: const TextStyle(color: Sq.gold))),
         ..._saved.map((file) => ListTile(
           leading: const Icon(Icons.lock_outline, color: Sq.green), title: Text(file.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: IconButton(tooltip: 'Remove from this purchase', onPressed: () => setState(() => _saved.remove(file)), icon: const Icon(Icons.close)),
+          trailing: IconButton(tooltip: 'Remove from this purchase', onPressed: () => setState(() { _saved.remove(file); if (_coverId == file.id) _coverId = null; }), icon: const Icon(Icons.close)),
         )),
         ..._files.map((file) => ListTile(
           leading: const Icon(Icons.insert_drive_file_outlined, color: Sq.cyan),
           title: Text(file.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: IconButton(onPressed: () { _cleanTemporary(file); setState(() => _files.remove(file)); }, icon: const Icon(Icons.close)),
+          trailing: IconButton(onPressed: () { _cleanTemporary(file); setState(() { _files.remove(file); if (identical(_pendingCover, file)) _pendingCover = null; }); }, icon: const Icon(Icons.close)),
         )),
         const SizedBox(height: 24),
         SqButton(text: _saving ? 'Saving securely...' : 'Save purchase', icon: Icons.lock_outline, onPressed: _saving ? null : _save),

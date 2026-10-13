@@ -1,7 +1,7 @@
 name: selquaro
 description: Private, offline receipt and warranty vault for Android and iOS.
 publish_to: none
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -19,6 +19,10 @@ dependencies:
   uuid: ^4.5.1
   local_auth: ^2.3.0
   share_plus: ^10.1.4
+  flutter_local_notifications: 19.5.0
+  flutter_timezone: ^5.1.1
+  timezone: ^0.10.1
+  pdfrx: ^2.6.1
 
 dev_dependencies:
   flutter_test:

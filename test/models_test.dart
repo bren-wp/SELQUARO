@@ -18,10 +18,12 @@ void main() {
       warrantyEndsAt: DateTime(2028, 1, 1),
       serialNumber: '',
       notes: '',
+      coverDocumentId: 'doc1',
       documents: [VaultDocument(id: 'doc1', name: 'receipt.pdf', mimeType: 'application/pdf', createdAt: DateTime(2026, 1, 1))],
     );
     final restored = decodePurchases(encodePurchases([purchase])).single;
     expect(restored.documents.single.name, 'receipt.pdf');
+    expect(restored.coverDocumentId, 'doc1');
     expect(restored.daysRemaining(DateTime(2027, 1, 1)), 365);
     expect(restored.amount, 99.9);
   });

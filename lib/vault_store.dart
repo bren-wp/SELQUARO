@@ -110,6 +110,20 @@ class VaultStore {
     return _unseal(await File('${directory.path}/${document.id}.bin').readAsBytes());
   }
 
+  /// Import validated backup bytes without writing plaintext to disk.
+  Future<void> restoreDocumentBytes(VaultDocument document, Uint8List contents) async {
+    if (!RegExp(r'^[a-fA-F0-9-]{36}$').hasMatch(document.id)) {
+      throw const FormatException('Invalid restored attachment identifier');
+    }
+    if (contents.isEmpty || contents.length > _maxFileBytes) {
+      throw const FormatException('Invalid restored attachment size');
+    }
+    final directory = await _directory;
+    final target = File(directory.path + '/' + document.id + '.bin');
+    if (await target.exists()) throw StateError('An encrypted document already exists');
+    await target.writeAsBytes(await _seal(contents), flush: true);
+  }
+
   Future<void> deleteDocument(VaultDocument document) async {
     final directory = await _directory;
     final file = File('${directory.path}/${document.id}.bin');

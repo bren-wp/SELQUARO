@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,7 +9,11 @@ import 'package:local_auth/local_auth.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'backup_screen.dart';
 import 'controller.dart';
+import 'document_viewer.dart';
+import 'reminders.dart';
+import 'product_photo.dart';
 import 'editor.dart';
 import 'models.dart';
 import 'theme.dart';
@@ -26,6 +31,8 @@ class Selquaro extends StatefulWidget {
 
 class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
   late final VaultController vault;
+  late final WarrantyReminders reminders;
+  bool _remindersReady = false;
   final _securePrefs = const FlutterSecureStorage();
   final _auth = LocalAuthentication();
   int currentTab = 0;
@@ -38,6 +45,7 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     vault = VaultController(VaultStore())..addListener(_rebuild);
+    reminders = WarrantyReminders();
     _boot();
   }
 
@@ -49,10 +57,44 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
       await _unlock();
     }
     await vault.initialize();
+    try {
+      await reminders.initialize();
+      _remindersReady = true;
+      await reminders.sync(vault.purchases);
+    } catch (_) {
+      _remindersReady = false;
+    }
     if (mounted) setState(() {});
   }
 
-  void _rebuild() { if (mounted) setState(() {}); }
+  void _rebuild() {
+    if (_remindersReady && !locked) unawaited(_syncReminders());
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _syncReminders() async {
+    try {
+      await reminders.sync(vault.purchases);
+    } catch (_) {
+      // Keep saved purchases intact even if the OS blocks reminders.
+    }
+  }
+
+  Future<void> _toggleReminders(bool desired) async {
+    try {
+      final ok = await reminders.setEnabled(desired, vault.purchases);
+      if (!ok) _notice('Enable notifications in your device settings to receive reminders.');
+      if (mounted) setState(() {});
+    } catch (_) {
+      _notice('Could not update reminders.');
+    }
+  }
+
+  Future<void> _openBackup() async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => VaultBackupPage(vault: vault),
+    ));
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -137,8 +179,17 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
       item: item, controller: vault, onEdit: () async {
         Navigator.pop(context);
         await _edit(item);
-      }, onShare: _shareDocument,
+      }, onShare: _shareDocument, onView: _viewDocument,
     )));
+  }
+
+  Future<void> _viewDocument(VaultDocument item) async {
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => SecureDocumentViewer(
+        document: item, store: vault.store, onShare: () => _shareDocument(item),
+      ),
+    ));
   }
 
   Future<void> _shareDocument(VaultDocument item) async {
@@ -172,6 +223,7 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
     if (confirmed != true) return;
     try {
       await vault.clear();
+      await reminders.clear();
       if (mounted) setState(() => currentTab = 0);
     } catch (_) { _notice('Could not erase the vault'); }
   }
@@ -202,9 +254,13 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
               : IndexedStack(index: currentTab, children: [
                   HomePage(controller: vault, onNew: () => _create(), onOpen: _details),
                   VaultPage(controller: vault, onNew: () => _create(), onOpen: _details),
-                  AlertsPage(controller: vault, onOpen: _details),
+                  AlertsPage(controller: vault, onOpen: _details,
+                    remindersEnabled: reminders.enabled),
                   SettingsPage(controller: vault, biometricEnabled: biometric,
-                    onBiometricChange: _setBiometric, onClear: _deleteAll),
+                    onBiometricChange: _setBiometric, onClear: _deleteAll,
+                    remindersEnabled: reminders.enabled,
+                    remindersAvailable: reminders.available,
+                    onRemindersChange: _toggleReminders, onBackup: _openBackup),
                 ])),
           bottomNavigationBar: vault.loaded && vault.error == null ? SafeArea(top: false,
             child: Container(
@@ -271,7 +327,7 @@ class HomePage extends StatelessWidget {
           message: 'Add your first purchase or scan a receipt. No account is required.')
       else
         ...controller.ordered.take(5).map((p) => Padding(padding: const EdgeInsets.only(bottom: 10),
-          child: PurchaseTile(item: p, onTap: () => onOpen(p)))),
+          child: PurchaseTile(item: p, store: controller.store, onTap: () => onOpen(p)))),
       const SizedBox(height: 26),
       _section('Upcoming Warranty Expirations'),
       const SizedBox(height: 12),
@@ -280,7 +336,7 @@ class HomePage extends StatelessWidget {
           message: 'Warranty expiry reminders appear here when you add dates.')
       else
         ...controller.upcoming.take(4).map((p) => Padding(padding: const EdgeInsets.only(bottom: 10),
-          child: PurchaseTile(item: p, onTap: () => onOpen(p)))),
+          child: PurchaseTile(item: p, store: controller.store, onTap: () => onOpen(p)))),
       const SizedBox(height: 20),
     ]);
   }
@@ -296,8 +352,9 @@ class HomePage extends StatelessWidget {
 }
 
 class PurchaseTile extends StatelessWidget {
-  const PurchaseTile({super.key, required this.item, required this.onTap});
+  const PurchaseTile({super.key, required this.item, required this.store, required this.onTap});
   final Purchase item;
+  final VaultStore store;
   final VoidCallback onTap;
 
   @override
@@ -306,9 +363,7 @@ class PurchaseTile extends StatelessWidget {
     final color = days == null ? Sq.muted : days < 0 ? Sq.red : days <= 90 ? Sq.gold : Sq.green;
     final status = days == null ? 'No expiry date' : days < 0 ? 'Expired' : days == 0 ? 'Expires today' : '$days days left';
     return SqCard(onTap: onTap, padding: const EdgeInsets.all(12), child: Row(children: [
-      Container(width: 56, height: 56, decoration: BoxDecoration(
-        color: Sq.elevated, borderRadius: BorderRadius.circular(12)),
-        child: Icon(categoryIcon(item.category), color: Sq.cyan, size: 28)),
+      ProductPhoto(item: item, store: store, fallbackIcon: categoryIcon(item.category)),
       const SizedBox(width: 13),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -382,15 +437,76 @@ class _VaultPageState extends State<VaultPage> {
           title: widget.controller.purchases.isEmpty ? 'No purchases yet' : 'No matching purchases',
           message: widget.controller.purchases.isEmpty ? 'Tap + to add your first receipt or product.' : 'Try a different filter or search term.')
       else
-        ...matched.map((p) => Padding(padding: const EdgeInsets.only(bottom: 10), child: PurchaseTile(item: p, onTap: () => widget.onOpen(p)))),
+        LayoutBuilder(builder: (context, constraints) {
+          final columns = constraints.maxWidth >= 340 ? 2 : 1;
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: matched.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: columns == 2 ? .72 : 1.2,
+            ),
+            itemBuilder: (context, index) {
+              final purchase = matched[index];
+              return PurchaseGridCard(
+                item: purchase,
+                store: widget.controller.store,
+                onTap: () => widget.onOpen(purchase),
+              );
+            },
+          );
+        }),
     ]);
   }
 }
 
+class PurchaseGridCard extends StatelessWidget {
+  const PurchaseGridCard({
+    super.key, required this.item, required this.store, required this.onTap,
+  });
+  final Purchase item;
+  final VaultStore store;
+  final VoidCallback onTap;
+
+  @override Widget build(BuildContext context) {
+    final days = item.daysRemaining(DateTime.now());
+    final label = days == null ? 'No expiry set' :
+        days < 0 ? 'Warranty expired' : days == 0 ? 'Expires today' : '$days days left';
+    final statusColor = days == null ? Sq.muted : days < 0 ? Sq.red :
+        days < 91 ? Sq.gold : Sq.green;
+    return SqCard(
+      onTap: onTap, padding: const EdgeInsets.all(10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ProductPhoto(item: item, store: store, fallbackIcon: categoryIcon(item.category),
+          width: double.infinity, height: 96),
+        const SizedBox(height: 11),
+        Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 5),
+        Text(item.merchant.isEmpty ? item.category : item.merchant,
+          maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: Sq.muted, fontSize: 11)),
+        const Spacer(),
+        Row(children: [
+          Icon(Icons.shield_outlined, color: statusColor, size: 15),
+          const SizedBox(width: 5),
+          Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: statusColor, fontWeight: FontWeight.w700))),
+        ]),
+      ]),
+    );
+  }
+}
+
 class AlertsPage extends StatelessWidget {
-  const AlertsPage({super.key, required this.controller, required this.onOpen});
+  const AlertsPage({super.key, required this.controller, required this.onOpen,
+    required this.remindersEnabled});
   final VaultController controller;
   final ValueChanged<Purchase> onOpen;
+  final bool remindersEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -413,10 +529,12 @@ class AlertsPage extends StatelessWidget {
           message: 'Add actual warranty expiry dates to see your timeline here.')
       else
         ...dated.map((p) => Padding(padding: const EdgeInsets.only(bottom: 10),
-          child: PurchaseTile(item: p, onTap: () => onOpen(p)))),
+          child: PurchaseTile(item: p, store: controller.store, onTap: () => onOpen(p)))),
       const SizedBox(height: 15),
-      const Text('Dates are stored on your device. Automatic system notifications will be added in a future release.',
-        style: TextStyle(color: Sq.muted, fontSize: 12)),
+      Text(remindersEnabled
+        ? 'Private device reminders are scheduled 30, 7 and 1 days before expiry (when permitted by the OS).'
+        : 'Enable optional device reminders in Settings. All warranty dates remain on this device.',
+        style: const TextStyle(color: Sq.muted, fontSize: 12)),
     ]);
   }
 
@@ -429,11 +547,17 @@ class AlertsPage extends StatelessWidget {
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key, required this.controller, required this.biometricEnabled,
-    required this.onBiometricChange, required this.onClear});
+    required this.onBiometricChange, required this.onClear,
+    required this.remindersEnabled, required this.remindersAvailable,
+    required this.onRemindersChange, required this.onBackup});
   final VaultController controller;
   final bool biometricEnabled;
   final ValueChanged<bool> onBiometricChange;
   final VoidCallback onClear;
+  final bool remindersEnabled;
+  final bool remindersAvailable;
+  final ValueChanged<bool> onRemindersChange;
+  final VoidCallback onBackup;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -461,6 +585,26 @@ class SettingsPage extends StatelessWidget {
         value: biometricEnabled, onChanged: onBiometricChange,
       )),
       const SizedBox(height: 12),
+      SqCard(child: SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        secondary: const Icon(Icons.notifications_active_outlined, color: Sq.gold),
+        title: const Text('Warranty reminders'),
+        subtitle: const Text('Optional private local notifications 30, 7 and 1 days before expiry.',
+          style: TextStyle(fontSize: 12, color: Sq.muted)),
+        value: remindersEnabled,
+        onChanged: remindersAvailable ? onRemindersChange : null,
+      )),
+      const SizedBox(height: 12),
+      SqCard(child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.backup_outlined, color: Sq.cyan),
+        title: const Text('Encrypted backup & restore'),
+        subtitle: const Text('Export or restore with your own passphrase.',
+          style: TextStyle(fontSize: 12, color: Sq.muted)),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onBackup,
+      )),
+      const SizedBox(height: 12),
       SqCard(child: const ListTile(
         contentPadding: EdgeInsets.zero, leading: Icon(Icons.cloud_off_outlined, color: Sq.green),
         title: Text('Offline by design'),
@@ -477,7 +621,7 @@ class SettingsPage extends StatelessWidget {
       const Text('ABOUT', style: TextStyle(color: Sq.cyan, letterSpacing: 2, fontWeight: FontWeight.w700)),
       const SizedBox(height: 12),
       const SqCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('SELQUARO 0.1.0', style: TextStyle(fontWeight: FontWeight.bold)),
+        Text('SELQUARO 0.2.0', style: TextStyle(fontWeight: FontWeight.bold)),
         SizedBox(height: 8),
         Text('Your purchases. Safely kept.', style: TextStyle(color: Sq.muted)),
         SizedBox(height: 8),
@@ -491,11 +635,12 @@ class SettingsPage extends StatelessWidget {
 
 class ProductDetails extends StatelessWidget {
   const ProductDetails({super.key, required this.item, required this.controller,
-    required this.onEdit, required this.onShare});
+    required this.onEdit, required this.onShare, required this.onView});
   final Purchase item;
   final VaultController controller;
   final VoidCallback onEdit;
   final ValueChanged<VaultDocument> onShare;
+  final ValueChanged<VaultDocument> onView;
 
   Future<void> _remove(BuildContext context) async {
     final approved = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
@@ -528,12 +673,8 @@ class ProductDetails extends StatelessWidget {
           icon: const Icon(Icons.delete_outline, color: Sq.red)),
       ]),
       body: ListView(padding: const EdgeInsets.all(20), children: [
-        Center(child: Container(
-          width: 115, height: 115,
-          decoration: BoxDecoration(color: Sq.surface, borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Sq.outline)),
-          child: Icon(categoryIcon(item.category), color: Sq.cyan, size: 64),
-        )),
+        Center(child: ProductPhoto(item: item, store: controller.store,
+          fallbackIcon: categoryIcon(item.category), width: 132, height: 132)),
         const SizedBox(height: 18),
         Center(child: Text(item.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 27, fontWeight: FontWeight.bold))),
         const SizedBox(height: 6),
@@ -564,10 +705,14 @@ class ProductDetails extends StatelessWidget {
             message: 'Edit the purchase to attach receipts or warranty PDFs.')
         else
           ...item.documents.map((d) => Padding(padding: const EdgeInsets.only(bottom: 10),
-            child: SqCard(onTap: () => onShare(d), child: Row(children: [
+            child: SqCard(onTap: () => onView(d), child: Row(children: [
               const Icon(Icons.description_outlined, color: Sq.cyan), const SizedBox(width: 12),
               Expanded(child: Text(d.name, overflow: TextOverflow.ellipsis)),
-              const Icon(Icons.share_outlined, color: Sq.muted),
+              IconButton(
+                onPressed: () => onShare(d),
+                tooltip: 'Share copy',
+                icon: const Icon(Icons.ios_share_outlined, color: Sq.muted),
+              ),
             ])))),
         const SizedBox(height: 24),
         SqButton(text: 'Edit purchase', icon: Icons.edit_outlined, onPressed: onEdit),

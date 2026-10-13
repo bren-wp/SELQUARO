@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
+import 'portable_backup.dart';
 import 'models.dart';
 import 'vault_store.dart';
 
@@ -45,6 +48,45 @@ class VaultController extends ChangeNotifier {
     notifyListeners();
     for (final document in item.documents) {
       await store.deleteDocument(document);
+    }
+  }
+
+  Future<Uint8List> createBackup(String passphrase) async {
+    if (error != null) throw StateError('Vault is locked');
+    final files = <String, Uint8List>{};
+    for (final purchase in purchases) {
+      for (final document in purchase.documents) {
+        files[document.id] = await store.readDocument(document);
+      }
+    }
+    return PortableBackup.encrypt(
+      purchases: purchases, files: files, password: passphrase,
+    );
+  }
+
+  /// Restore only to an empty vault, ensuring no user records are replaced.
+  Future<void> restoreBackup(Uint8List ciphertext, String passphrase) async {
+    if (error != null) throw StateError('Vault is locked');
+    if (purchases.isNotEmpty) {
+      throw StateError('For safety, restore is available only when the vault is empty');
+    }
+    final contents = await PortableBackup.decrypt(ciphertext, passphrase);
+    final written = <VaultDocument>[];
+    try {
+      for (final purchase in contents.purchases) {
+        for (final document in purchase.documents) {
+          await store.restoreDocumentBytes(document, contents.files[document.id]!);
+          written.add(document);
+        }
+      }
+      await store.save(contents.purchases);
+      purchases = contents.purchases;
+      notifyListeners();
+    } catch (_) {
+      for (final doc in written) {
+        await store.deleteDocument(doc);
+      }
+      rethrow;
     }
   }
 
