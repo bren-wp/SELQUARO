@@ -1,22 +1,20 @@
-# SELQUARO 0.5.0 — Responsive vault and correct warranty dates
+# SELQUARO 0.6.0 — Private UI and reliability refinement
 
-## What's new
-- Refactored the purchase vault from a fully shrink-wrapped grid to lazily rendered slivers, improving scroll responsiveness on collections with hundreds or thousands of items.
-- Adaptive presentation: readable purchase rows on narrow Android screens; two-column cards on regular phones and three columns on larger screens.
-- Search by purchase name, merchant, category, notes or serial number. Clear-search action and reset filters when no results match.
-- Category and warranty-status filters (active, expiring within 90 days, expired, unknown), plus deterministic newest/oldest, alphabetic and nearest-expiry sorting.
-- Correct warranty countdown at daylight-saving time transitions by comparing calendar dates in UTC rather than elapsed local hours.
-- Schedule reminders relative to true civil dates and then schedule at 9:00 local time, avoiding shifts across DST boundaries.
-- Prevent concurrent vault edits, deletions or restores while creating a portable encrypted backup: metadata and document bytes are captured as a single consistent snapshot.
-- Preserve existing encrypted data format and backup format; no demo purchases or accounts added.
+## Changes
+- Replace the duplicated lock-screen routes with one consistent **full-route privacy curtain**. Authentication no longer destroys unfinished receipt forms or a selected document view. The overlay blocks touches and hides the underlying content from accessibility services.
+- Lock view is scrollable on small screens and remains usable with large accessibility fonts.
+- Improve bottom-tab accessibility through explicitly labelled, selected-state semantics and single-line labels.
+- Guard receipt/photo import and on-device OCR against rapid concurrent save/scan actions; prevent callbacks from updating screens after disposal.
+- Prevent cleanup errors after sharing a document or rolling back imports from crashing the editor or hiding the initial error.
+- Validate monetary values against the maximum accepted by portable backup rules (0–1 trillion) so a purchase cannot be saved successfully but fail all backups solely due to its value.
+- Reject malformed encrypted document IDs before attempting filesystem reads/deletion.
+- Serialize local notification schedule changes: a stale asynchronous cancel/reschedule operation can no longer race against newer edits.
+- Add focused widget tests for locked UI state preservation and small-screen layout, plus tests that reject attachment path traversal.
 
-## Quality
-- Pure logic regression tests for search, sorting, category/warranty filters, and empty sets.
-- Calendar-date tests for spring and autumn DST boundaries.
-- A controlled delayed-read test ensures an encrypted backup blocks edits until its contents are copied.
-- CI requires Flutter analysis, tests, Android privacy checks, APK and AAB builds, and unsigned iOS compilation.
+## Compatibility
+No vault format or SQBK2 archive change. Existing encrypted receipts/warranties are not rewritten, and there are no user accounts, demo records, cloud sync, telemetry or adverts.
 
-## Distribution limitations
-Attached Android APK/AAB packages are **testing builds** using GitHub's temporary signing configuration. They are not Google Play production upload-signed; use a stable upload key before store release. No signed iOS IPA is provided.
+## Quality and distribution
+Android static analysis, Flutter tests, Android privacy assertions, APK/AAB builds and unsigned iOS compile are required before GitHub prerelease publication. Android packages in this release are **CI test-signed**, not Google Play production/upload signed. Physical-device runtime testing, 1:1 screenshot comparisons and permanent distribution signatures remain necessary before a production-ready designation.
 
-The UI uses the established SELQUARO visual palette. Pixel-level design parity and physical-device smoke testing have not been certified. Keep external copies of your original receipts and your backup passphrase.
+Always keep your original receipts and a separately verified encrypted backup before replacing test-signed installations.

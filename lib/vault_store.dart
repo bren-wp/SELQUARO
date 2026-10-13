@@ -145,14 +145,26 @@ class VaultStore {
     return document;
   }
 
+  // Never interpolate an untrusted attachment identifier into a file path.
+  static final _documentId = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
+
+  static void _verifyDocumentId(VaultDocument document) {
+    if (!_documentId.hasMatch(document.id)) {
+      throw const FormatException('Invalid encrypted attachment identifier');
+    }
+  }
+
   Future<Uint8List> readDocument(VaultDocument document) async {
+    _verifyDocumentId(document);
     final directory = await _directory;
     return _unseal(await File('${directory.path}/${document.id}.bin').readAsBytes());
   }
 
   /// Import validated backup bytes without writing plaintext to disk.
   Future<void> restoreDocumentBytes(VaultDocument document, Uint8List contents) async {
-    if (!RegExp(r'^[a-fA-F0-9-]{36}$').hasMatch(document.id)) {
+    if (!_documentId.hasMatch(document.id)) {
       throw const FormatException('Invalid restored attachment identifier');
     }
     if (contents.isEmpty || contents.length > _maxFileBytes) {
@@ -166,6 +178,7 @@ class VaultStore {
   }
 
   Future<void> deleteDocument(VaultDocument document) async {
+    _verifyDocumentId(document);
     final directory = await _directory;
     final file = File('${directory.path}/${document.id}.bin');
     if (await file.exists()) await file.delete();

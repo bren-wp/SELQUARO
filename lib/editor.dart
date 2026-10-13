@@ -81,6 +81,7 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
   }
 
   Future<void> _addSource(String path, String fileName, {bool temporary = false, bool productPhoto = false}) async {
+    if (_saving || _scanning || !mounted) return;
     final extension = fileName.split('.').last.toLowerCase();
     if (!['jpg', 'jpeg', 'png', 'webp', 'pdf'].contains(extension)) {
       _message('Only images and PDF files are supported');
@@ -116,6 +117,7 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
   }
 
   Future<void> _camera() async {
+    if (_saving || _scanning) return;
     try {
       final image = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 88, maxWidth: 2400);
       if (image != null) await _addSource(image.path, image.name, temporary: true);
@@ -123,6 +125,7 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
   }
 
   Future<void> _pickFile() async {
+    if (_saving || _scanning) return;
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom, allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
@@ -134,6 +137,7 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
   }
 
   Future<void> _pickProductPhoto() async {
+    if (_saving || _scanning) return;
     try {
       final photo = await ImagePicker().pickImage(
         source: ImageSource.gallery, imageQuality: 85, maxWidth: 1600,
@@ -147,11 +151,13 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
   }
 
   Future<void> _extract(String path) async {
+    if (!mounted) return;
     setState(() => _scanning = true);
     final scanner = TextRecognizer(script: TextRecognitionScript.latin);
     try {
       final result = await scanner.processImage(InputImage.fromFilePath(path));
       final lines = result.text.split('\n').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      if (!mounted) return;
       if (lines.isNotEmpty && _merchant.text.isEmpty) _merchant.text = lines.first;
       final amountPattern = RegExp(r'(?:EUR|USD|GBP|€|\$|£)?\s*(\d{1,5}[.,]\d{2})\b');
       if (_amount.text.isEmpty) {
@@ -165,9 +171,9 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
       }
       setState(() => _ocrHint = 'Text recognized on your device. Verify every suggested value before saving.');
     } catch (_) {
-      setState(() => _ocrHint = 'Automatic text recognition unavailable; enter details manually.');
+      if (mounted) setState(() => _ocrHint = 'Automatic text recognition unavailable; enter details manually.');
     } finally {
-      await scanner.close();
+      try { await scanner.close(); } catch (_) {}
       if (mounted) setState(() => _scanning = false);
     }
   }
@@ -182,13 +188,13 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
       initialDate: warranty ? (_warrantyEnd ?? _purchaseDate.add(const Duration(days: 365))) : _purchaseDate,
       firstDate: DateTime(1990), lastDate: DateTime(2100),
     );
-    if (result != null) setState(() {
+    if (result != null && mounted) setState(() {
       if (warranty) { _warrantyEnd = result; } else { _purchaseDate = result; }
     });
   }
 
   Future<void> _save() async {
-    if (!_form.currentState!.validate() || _saving) return;
+    if (_saving || _scanning || !_form.currentState!.validate()) return;
     setState(() => _saving = true);
     final imported = <VaultDocument>[];
     String? savedCover = _coverId;
@@ -216,9 +222,9 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
       if (mounted) Navigator.of(context).pop();
     } catch (_) {
       for (final doc in imported) {
-        await widget.controller.store.deleteDocument(doc);
+        try { await widget.controller.store.deleteDocument(doc); } catch (_) {}
       }
-      _message('Unable to save securely. Your previous data was not replaced.');
+      _message('Unable to save securely. Existing purchases were preserved.');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -250,7 +256,8 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
             validator: (text) {
               if (text == null || text.trim().isEmpty) return null;
               final amount = double.tryParse(text.replaceAll(',', '.'));
-              return amount == null || !amount.isFinite || amount < 0 ? 'Invalid amount' : null;
+              return amount == null || !amount.isFinite || amount < 0 || amount > 1e12
+                  ? 'Enter an amount from 0 to 1 trillion' : null;
             })),
           const SizedBox(width: 10),
           SizedBox(width: 104, child: DropdownButtonFormField<String>(
@@ -283,7 +290,7 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
         const SizedBox(height: 16),
         const Text('DOCUMENTS', style: TextStyle(color: Sq.cyan, letterSpacing: 2, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
-        OutlinedButton.icon(onPressed: _pickProductPhoto,
+        OutlinedButton.icon(onPressed: _saving || _scanning ? null : _pickProductPhoto,
           icon: const Icon(Icons.add_photo_alternate_outlined),
           label: Text(_pendingCover == null && _coverId == null ? 'Add product photo' : 'Change product photo')),
         if (_pendingCover != null) Padding(
@@ -294,8 +301,8 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
         ),
         const SizedBox(height: 10),
         Wrap(spacing: 10, runSpacing: 8, children: [
-          OutlinedButton.icon(onPressed: _camera, icon: const Icon(Icons.photo_camera_outlined), label: const Text('Scan receipt')),
-          OutlinedButton.icon(onPressed: _pickFile, icon: const Icon(Icons.attach_file), label: const Text('Import image / PDF')),
+          OutlinedButton.icon(onPressed: _saving || _scanning ? null : _camera, icon: const Icon(Icons.photo_camera_outlined), label: const Text('Scan receipt')),
+          OutlinedButton.icon(onPressed: _saving || _scanning ? null : _pickFile, icon: const Icon(Icons.attach_file), label: const Text('Import image / PDF')),
         ]),
         if (_scanning) const LinearProgressIndicator(),
         if (_ocrHint != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(_ocrHint!, style: const TextStyle(color: Sq.gold))),
@@ -309,7 +316,7 @@ class _PurchaseEditorState extends State<PurchaseEditor> {
           trailing: IconButton(onPressed: () { _cleanTemporary(file); setState(() { _files.remove(file); if (identical(_pendingCover, file)) _pendingCover = null; }); }, icon: const Icon(Icons.close)),
         )),
         const SizedBox(height: 24),
-        SqButton(text: _saving ? 'Saving securely...' : 'Save purchase', icon: Icons.lock_outline, onPressed: _saving ? null : _save),
+        SqButton(text: _saving ? 'Saving securely...' : 'Save purchase', icon: Icons.lock_outline, onPressed: _saving || _scanning ? null : _save),
         const SizedBox(height: 24),
       ]))),
     );

@@ -15,6 +15,7 @@ import 'document_viewer.dart';
 import 'reminders.dart';
 import 'product_photo.dart';
 import 'purchase_query.dart';
+import 'privacy_curtain.dart';
 import 'editor.dart';
 import 'models.dart';
 import 'theme.dart';
@@ -231,8 +232,13 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
     } catch (_) {
       _notice('Unable to share this document');
     } finally {
-      if (exported != null && await exported.exists()) {
-        await exported.delete();
+      // A failed cache deletion must not crash after a successful share.
+      if (exported != null) {
+        try {
+          if (await exported.exists()) await exported.delete();
+        } catch (_) {
+          // The next launch also removes older SELQUARO share copies.
+        }
       }
     }
   }
@@ -258,48 +264,14 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'SELQUARO', theme: Sq.theme, debugShowCheckedModeBanner: false,
-    // Covers every Navigator route, including open PDFs or edit sheets, when
-    // the app enters the background. Locking only 'home' is insufficient.
-    builder: (context, navigator) => Stack(children: [
-      if (navigator != null) navigator,
-      if (locked)
-        Positioned.fill(child: Material(
-          color: Sq.bg,
-          child: SafeArea(child: Center(child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.shield_outlined, color: Sq.cyan, size: 72),
-              const SizedBox(height: 20),
-              const Text('SELQUARO is locked',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              const Text('Unlock to view your private documents.',
-                textAlign: TextAlign.center, style: TextStyle(color: Sq.muted)),
-              const SizedBox(height: 22),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 340),
-                child: SqButton(text: 'Unlock', icon: Icons.lock_open,
-                  onPressed: _unlock),
-              ),
-            ]),
-          ))),
-        )),
-    ]),
-    home: locked
-      ? Scaffold(body: SafeArea(child: Center(child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.shield_outlined, color: Sq.cyan, size: 72),
-            const SizedBox(height: 20),
-            const Text('SELQUARO is locked', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 14),
-            const Text('Use your device authentication to open the local encrypted vault.',
-              textAlign: TextAlign.center, style: TextStyle(color: Sq.muted)),
-            const SizedBox(height: 20),
-            SqButton(text: 'Unlock', icon: Icons.lock_open, onPressed: _unlock),
-          ]),
-        ))))
-      : Scaffold(
+    builder: (context, navigator) => PrivacyCurtain(
+      locked: locked,
+      onUnlock: _unlock,
+      child: navigator ?? const SizedBox.shrink(),
+    ),
+    // Never replace the home route when locking: that would discard an
+    // unfinished receipt form or PDF viewer beneath the security overlay.
+    home: Scaffold(
           body: SafeArea(child: !vault.loaded
             ? const Center(child: CircularProgressIndicator())
             : vault.error != null
@@ -342,14 +314,25 @@ class _SelquaroState extends State<Selquaro> with WidgetsBindingObserver {
         ),
   );
 
-  Widget _navIcon(int index, IconData icon, String label) => InkWell(
-    onTap: () => setState(() => currentTab = index),
-    borderRadius: BorderRadius.circular(12),
-    child: SizedBox(width: 56, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Icon(icon, color: currentTab == index ? Sq.cyan : Sq.muted, size: 25),
-      const SizedBox(height: 4),
-      Text(label, style: TextStyle(fontSize: 11, color: currentTab == index ? Sq.cyan : Sq.muted)),
-    ])),
+  Widget _navIcon(int index, IconData icon, String label) => Semantics(
+    button: true,
+    selected: currentTab == index,
+    label: label,
+    child: InkWell(
+      onTap: () => setState(() => currentTab = index),
+      borderRadius: BorderRadius.circular(12),
+      child: ExcludeSemantics(
+        child: SizedBox(width: 56, child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: currentTab == index ? Sq.cyan : Sq.muted, size: 25),
+            const SizedBox(height: 4),
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: currentTab == index ? Sq.cyan : Sq.muted)),
+          ],
+        )),
+      ),
+    ),
   );
 }
 
