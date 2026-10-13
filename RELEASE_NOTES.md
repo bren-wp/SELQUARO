@@ -1,26 +1,22 @@
-# SELQUARO 0.4.0 — vault reliability and safer document imports
+# SELQUARO 0.5.0 — Responsive vault and correct warranty dates
 
-## Improvements
-- Validate PDF, JPEG, PNG and WebP binary headers, filename and MIME type before accepting imported files. Reject renamed unsupported files instead of relying on extensions alone.
-- Validate document signatures again during encrypted imports and portable-backup restore.
-- Recover a fully authenticated pending metadata save if the first vault write was interrupted, without resetting existing encrypted information.
-- Remove partially written encrypted attachment files after failed import or restore.
-- Ensure a failed *post-commit* deletion of obsolete encrypted attachments cannot mistakenly undo or mark successful purchase saves/deletions as failed.
-- Reject overlapping vault mutations to prevent concurrent writes from silently overwriting records.
-- Lock the app when backgrounded or inactive if device authentication is enabled, including screens opened through Navigator.
-- Clean up SELQUARO temporary plaintext share files left behind by older releases.
-- Handle inaccessible secure device settings without exposing purchases.
-- Add regression tests for transaction ordering, failed cleanup, simultaneous updates, valid document headers and spoofed extensions.
+## What's new
+- Refactored the purchase vault from a fully shrink-wrapped grid to lazily rendered slivers, improving scroll responsiveness on collections with hundreds or thousands of items.
+- Adaptive presentation: readable purchase rows on narrow Android screens; two-column cards on regular phones and three columns on larger screens.
+- Search by purchase name, merchant, category, notes or serial number. Clear-search action and reset filters when no results match.
+- Category and warranty-status filters (active, expiring within 90 days, expired, unknown), plus deterministic newest/oldest, alphabetic and nearest-expiry sorting.
+- Correct warranty countdown at daylight-saving time transitions by comparing calendar dates in UTC rather than elapsed local hours.
+- Schedule reminders relative to true civil dates and then schedule at 9:00 local time, avoiding shifts across DST boundaries.
+- Prevent concurrent vault edits, deletions or restores while creating a portable encrypted backup: metadata and document bytes are captured as a single consistent snapshot.
+- Preserve existing encrypted data format and backup format; no demo purchases or accounts added.
 
-## Signing, testing and release
-GitHub Actions runs Dart analysis, unit tests, Android privacy checks, Android APK and AAB builds, and an unsigned iOS compilation check before tagging this prerelease.
+## Quality
+- Pure logic regression tests for search, sorting, category/warranty filters, and empty sets.
+- Calendar-date tests for spring and autumn DST boundaries.
+- A controlled delayed-read test ensures an encrypted backup blocks edits until its contents are copied.
+- CI requires Flutter analysis, tests, Android privacy checks, APK and AAB builds, and unsigned iOS compilation.
 
-**The APK and AAB are test-signed**. Neither is a production Google Play upload artifact until a persistent upload signing key is configured. iOS requires Apple signing before distribution.
+## Distribution limitations
+Attached Android APK/AAB packages are **testing builds** using GitHub's temporary signing configuration. They are not Google Play production upload-signed; use a stable upload key before store release. No signed iOS IPA is provided.
 
-## Data compatibility
-- Vault schema remains version 1, with the same per-document AES-256-GCM encryption format.
-- Portable backups remain SQBK2. Existing valid encrypted purchases and attachments are not migrated or reset.
-- No accounts, no backend, no advertisements, and no seeded/demo purchases.
-
-## Remaining QA
-Pixel-for-pixel parity with design reference images, device-level end-to-end smoke testing and store signing cannot be inferred from CI and are not claimed completed. Keep independent copies of original receipts and your encrypted backup passphrase.
+The UI uses the established SELQUARO visual palette. Pixel-level design parity and physical-device smoke testing have not been certified. Keep external copies of your original receipts and your backup passphrase.

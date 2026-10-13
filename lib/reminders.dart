@@ -77,8 +77,8 @@ class WarrantyReminders {
       final expiry = item.warrantyEndsAt;
       if (expiry == null) continue;
       for (final daysBefore in [30, 7, 1]) {
-        // Construct the local calendar date at 9:00, not a fixed 24h offset.
-        final calendar = DateTime(expiry.year, expiry.month, expiry.day).subtract(Duration(days: daysBefore));
+        // Subtract civil calendar days in UTC, then schedule 09:00 local.\n        // Subtracting Duration from local midnight crosses DST incorrectly.
+        final calendar = DateTime.utc(expiry.year, expiry.month, expiry.day).subtract(Duration(days: daysBefore));
         final scheduled = tz.TZDateTime(
           tz.local, calendar.year, calendar.month, calendar.day, 9,
         );

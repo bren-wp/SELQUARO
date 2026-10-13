@@ -57,8 +57,15 @@ class Purchase {
   final List<VaultDocument> documents;
   final String? coverDocumentId;
 
-  int? daysRemaining(DateTime now) =>
-      warrantyEndsAt == null ? null : DateTime(warrantyEndsAt!.year, warrantyEndsAt!.month, warrantyEndsAt!.day).difference(DateTime(now.year, now.month, now.day)).inDays;
+  /// Calendar-day arithmetic: local UTC-offset and DST shifts must not
+  /// shorten a warranty by one day near daylight-saving transitions.
+  int? daysRemaining(DateTime now) {
+    final expiry = warrantyEndsAt;
+    if (expiry == null) return null;
+    return DateTime.utc(expiry.year, expiry.month, expiry.day)
+        .difference(DateTime.utc(now.year, now.month, now.day))
+        .inDays;
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
